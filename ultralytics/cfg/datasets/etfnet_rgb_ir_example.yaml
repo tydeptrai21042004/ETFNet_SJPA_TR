@@ -1,0 +1,27 @@
+# Paired RGB--IR dataset example. Paths are resolved relative to `path`.
+path: /absolute/path/to/your/dataset
+
+train: rgb/images/train
+val: rgb/images/val
+test: rgb/images/test
+
+train_ir: infrared/images/train
+val_ir: infrared/images/val
+test_ir: infrared/images/test
+
+# Optional when labels do not follow the stock images/ -> labels/ convention.
+train_labels: labels/train
+val_labels: labels/val
+test_labels: labels/test
+
+pairing:
+  strict: true       # fail immediately when a partner is missing
+  resize_ir: false   # keep false for scientific experiments; pre-align data instead
+  cache_suffix: .rgbir.npy
+
+names:
+  0: car
+  1: truck
+  2: bus
+  3: van
+  4: freight_car
