@@ -1,0 +1,22 @@
+# Tiny six-channel OBB network used only for integration and resume tests.
+scale: t
+ch: 6
+nc: 1
+scales:
+  t: [1.0, 1.0, 256]
+
+backbone:
+  - [-1, 1, IN, []]
+  - [-1, 1, Multiin, [1]]
+  - [-2, 1, Multiin, [2]]
+  - [-2, 1, Conv, [16, 3, 2]]
+  - [-2, 1, Conv, [16, 3, 2]]
+  - [-2, 1, Conv, [32, 3, 2]]
+  - [-2, 1, Conv, [32, 3, 2]]
+  - [[-2, -1], 1, SJPA, [8, 4, 0.03, 0.001, true, 1.5, 0.6, 12.0, 1, 0.1, 0.3]]
+  - [-1, 1, Conv, [64, 3, 2]]
+  - [-1, 1, Conv, [96, 3, 2]]
+  - [-1, 1, Conv, [128, 3, 2]]
+
+head:
+  - [[8, 9, 10], 1, OBB, [nc, 1]]
