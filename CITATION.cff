@@ -1,0 +1,22 @@
+cff-version: 1.2.0
+message: >-
+  This repository is a corrected research implementation derived from ETFNet.
+  Cite the ETFNet article when using the base architecture, and describe the
+  SJPA-TR extension and repository version used in your experiments.
+title: "ETFNet-SJPA-TR: corrected paired RGB-IR detection pipeline"
+version: "8.0.238+etfnetsjpa.3"
+date-released: 2026-08-03
+license: AGPL-3.0
+preferred-citation:
+  type: article
+  authors:
+    - family-names: Nguyen
+      given-names: Thi Lan
+    - family-names: Tran
+      given-names: Cao Truong
+    - family-names: Nguyen
+      given-names: Dinh Tan
+  title: "ETFNet: An efficient transformer-based RGB-IR fusion network for UAV object detection"
+  journal: "Information Fusion"
+  year: 2027
+  doi: "10.1016/j.inffus.2026.104658"

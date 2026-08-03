@@ -1,0 +1,22 @@
+{
+  "ok": true,
+  "installation_mode": "pip --target --no-deps with existing tested runtime dependencies",
+  "wheel": "etfnet_sjpa_tr-8.0.238+etfnetsjpa.3-py3-none-any.whl",
+  "sha256": "d8d557ad80ac020abbfcbf95ce76aeeb1d3e59dfd0a6215cec9e67d7532ed736",
+  "version": "8.0.238+etfnetsjpa.3",
+  "imported_from_installed_target": true,
+  "sjpa_module_output": [
+    1,
+    64,
+    16,
+    16
+  ],
+  "full_model_parameters": 9981746,
+  "six_channel_forward": true,
+  "cli_help": true,
+  "runtime": {
+    "python": "3.13.5 (main, May  5 2026, 21:05:52) [GCC 14.2.0]",
+    "platform": "Linux-6.12.13-x86_64-with-glibc2.41"
+  },
+  "note": "The isolated test reused the validated torch/runtime dependencies and imported the project code from the installed wheel target, not from the source tree."
+}

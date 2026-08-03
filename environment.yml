@@ -1,0 +1,9 @@
+name: etfnet-sjpa-tr
+channels:
+  - conda-forge
+dependencies:
+  - python=3.11
+  - pip>=24
+  - pip:
+      - -r requirements.txt
+      - -e .

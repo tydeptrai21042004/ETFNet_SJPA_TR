@@ -1,0 +1,170 @@
+# Ultralytics YOLO 🚀, AGPL-3.0 license
+
+# Overview:
+# This pyproject.toml file manages the build, packaging, and distribution of the Ultralytics library.
+# It defines essential project metadata, dependencies, and settings used to develop and deploy the library.
+
+# Key Sections:
+# - [build-system]: Specifies the build requirements and backend (e.g., setuptools, wheel).
+# - [project]: Includes details like name, version, description, authors, dependencies and more.
+# - [project.optional-dependencies]: Provides additional, optional packages for extended features.
+# - [tool.*]: Configures settings for various tools (pytest, yapf, etc.) used in the project.
+
+# Installation:
+# The Ultralytics library can be installed using the command: 'pip install ultralytics'
+# For development purposes, you can install the package in editable mode with: 'pip install -e .'
+# This approach allows for real-time code modifications without the need for re-installation.
+
+# Documentation:
+# For comprehensive documentation and usage instructions, visit: https://docs.ultralytics.com
+
+[build-system]
+requires = ["setuptools>=43.0.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+# Project settings -----------------------------------------------------------------------------------------------------
+[project]
+name = "etfnet-sjpa-tr"
+dynamic = ["version"]
+description = "Corrected paired RGB-IR UAV detection pipeline with ETFNet and parameter-free SJPA-TR fusion."
+readme = "README.md"
+requires-python = ">=3.9"
+license = { "text" = "AGPL-3.0" }
+keywords = ["RGB-IR", "multispectral", "UAV", "object-detection", "oriented-bounding-box", "ETFNet", "SJPA-TR"]
+authors = [
+    { name = "ETFNet authors and SJPA-TR implementation contributors" }
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: GNU Affero General Public License v3 or later (AGPLv3+)",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Topic :: Scientific/Engineering :: Image Recognition",
+]
+
+dependencies = [
+    "numpy>=1.23,<3.0",
+    "matplotlib>=3.6,<4.0",
+    "opencv-python>=4.6,<5.0",
+    "pillow>=9.0,<13.0",
+    "pyyaml>=6.0,<7.0",
+    "requests>=2.28,<3.0",
+    "scipy>=1.9,<2.0",
+    "torch>=2.0,<2.11",
+    "torchvision>=0.15,<0.26",
+    "tqdm>=4.64,<5.0",
+    "pandas>=1.5,<3.0",
+    "seaborn>=0.12,<0.14",
+    "psutil>=5.9,<8.0",
+    "py-cpuinfo>=9.0,<10.0",
+]
+
+# Optional dependencies ------------------------------------------------------------------------------------------------
+[project.optional-dependencies]
+dev = [
+    "ipython",
+    "check-manifest",
+    "pre-commit",
+    "pytest",
+    "pytest-cov",
+    "coverage[toml]",
+    "mkdocs-material",
+    "mkdocstrings[python]",
+    "mkdocs-jupyter", # for notebooks
+    "mkdocs-redirects", # for 301 redirects
+    "mkdocs-ultralytics-plugin>=0.0.34", # for meta descriptions and images, dates and authors
+]
+export = [
+    "onnx>=1.16.0",
+    "onnxruntime>=1.17.0",
+    "onnxslim>=0.1.34",
+    "openvino>=2024.0.0",
+]
+data = [
+    # gdown 6 removes the historical 50-file folder limit; it requires Python 3.10+.
+    "gdown>=6.0,<7.0; python_version >= '3.10'",
+    "py7zr>=0.22,<2.0",
+    # Used only for the CVC-14 ModelScope mirror. Local archives work without it.
+    "modelscope>=1.36,<2.0; python_version >= '3.10'",
+]
+
+explorer = [
+    "lancedb",  # vector search
+    "duckdb",  # SQL queries, supports lancedb tables
+    "streamlit",  # visualizing with GUI
+]
+
+# tensorflow>=2.4.1,<=2.13.1  # TF exports (-cpu, -aarch64, -macos)
+# tflite-support  # for TFLite model metadata
+# scikit-learn==0.19.2  # CoreML quantization
+# nvidia-pyindex  # TensorRT export
+# nvidia-tensorrt  # TensorRT export
+logging = [
+    "comet", # https://docs.ultralytics.com/integrations/comet/
+    "tensorboard>=2.13.0",
+    "dvclive>=2.12.0",
+]
+extra = [
+    "ipython", # interactive notebook
+    "albumentations>=1.0.3", # training augmentations
+    "pycocotools>=2.0.6", # COCO mAP
+]
+
+[project.urls]
+"ETFNet Paper" = "https://doi.org/10.1016/j.inffus.2026.104658"
+
+[project.scripts]
+yolo = "ultralytics.cfg:entrypoint"
+etfnet = "etfnet_cli:main"
+ultralytics = "ultralytics.cfg:entrypoint"
+etfnet-sjpa = "etfnet_cli:main"
+
+# Tools settings -------------------------------------------------------------------------------------------------------
+[tool.setuptools]
+include-package-data = true
+
+[tool.setuptools.dynamic]
+version = { attr = "ultralytics.__version__" }
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+norecursedirs = [".git", "dist", "build"]
+addopts = "-ra --strict-markers --durations=20"
+
+[tool.coverage.run]
+source = ["ultralytics", "ultra_modeling", "ultra_runtime", "ultra_services"]
+data_file = "tests/.coverage"
+omit = ["ultralytics/utils/callbacks/*"]
+
+[tool.isort]
+line_length = 120
+multi_line_output = 0
+
+[tool.yapf]
+based_on_style = "pep8"
+spaces_before_comment = 2
+column_limit = 120
+coalesce_brackets = true
+spaces_around_power_operator = true
+space_between_ending_comma_and_closing_bracket = true
+split_before_closing_bracket = false
+split_before_first_argument = false
+
+[tool.ruff]
+line-length = 120
+
+[tool.docformatter]
+wrap-summaries = 120
+wrap-descriptions = 120
+in-place = true
+pre-summary-newline = true
+close-quotes-on-newline = true
+
+[tool.codespell]
+ignore-words-list = "crate,nd,strack,dota,ane,segway,fo,gool,winn,commend"
+skip = '*.csv,*venv*,docs/??/,docs/mkdocs_??.yml'

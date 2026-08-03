@@ -1,0 +1,51 @@
+{
+  "environment": {
+    "platform": "Linux-6.12.13-x86_64-with-glibc2.41",
+    "python": "3.13.5 (main, May  5 2026, 21:05:52) [GCC 14.2.0]"
+  },
+  "ok": true,
+  "results": [
+    {
+      "command": [
+        "bash",
+        "tests/full_pipeline_smoke.sh"
+      ],
+      "duration_seconds": 34.062838718999956,
+      "log": "VALIDATION/logs/full_pipeline.log",
+      "name": "full_pipeline",
+      "ok": true,
+      "returncode": 0,
+      "tail": [
+        "",
+        "\u001b[34m\u001b[1mPyTorch:\u001b[0m starting from '/tmp/etfnet_sjpa_full_OsITQx/runs/full/weights/best.pt' with input shape (1, 6, 64, 64) BCHW and output shape(s) (1, 6, 84) (1.7 MB)",
+        "",
+        "\u001b[34m\u001b[1mTorchScript:\u001b[0m starting export with torch 2.10.0+cpu...",
+        "\u001b[34m\u001b[1mTorchScript:\u001b[0m export success \u2705 0.4s, saved as '/tmp/etfnet_sjpa_full_OsITQx/runs/full/weights/best.torchscript' (3.3 MB)",
+        "",
+        "Export complete (2.0s)",
+        "Results saved to \u001b[1m/tmp/etfnet_sjpa_full_OsITQx/runs/full/weights\u001b[0m",
+        "Predict:         yolo predict task=obb model=/tmp/etfnet_sjpa_full_OsITQx/runs/full/weights/best.torchscript imgsz=64  ",
+        "Validate:        yolo val task=obb model=/tmp/etfnet_sjpa_full_OsITQx/runs/full/weights/best.torchscript imgsz=64 data=/tmp/etfnet_sjpa_full_OsITQx/dataset/data.yaml  ",
+        "Visualize:       https://netron.app",
+        "/tmp/etfnet_sjpa_full_OsITQx/runs/full/weights/best.torchscript",
+        "===== torchscript-predict =====",
+        "Loading /tmp/etfnet_sjpa_full_OsITQx/runs/full/weights/best.torchscript for TorchScript inference...",
+        "",
+        "image 1/2 /tmp/etfnet_sjpa_full_OsITQx/dataset/rgb/val/000.png: 64x64 (no detections), 58.9ms",
+        "image 2/2 /tmp/etfnet_sjpa_full_OsITQx/dataset/rgb/val/001.png: 64x64 (no detections), 31.3ms",
+        "Speed: 0.5ms preprocess, 45.1ms inference, 0.3ms postprocess per image at shape (1, 6, 64, 64)",
+        "Processed 2 paired frame(s).",
+        "PASS: train -> val -> image/video predict -> TorchScript pipeline"
+      ],
+      "timed_out": false
+    }
+  ],
+  "schema_version": 2,
+  "source_hashes": {
+    "block.py": "41e6fd2a5b1beca715f96da4d507eedd2a70306ec2df3f7741e636feb1057655",
+    "model_yaml": "53877db58facc52b28c1b12c569a1a6a17318b96aafafad2adef7e79e0aeb241",
+    "rgb_ir.py": "3dd47b123e57365ca291d5de0e9c46715e7d7f9b3c312c8c676f8265a5a99d4d",
+    "rgb_ir_check.py": "8e7fed77383d20eb1e97008b18284a33de3a6711dea39d117a52f733e82beeaf"
+  },
+  "stage": "pipeline"
+}

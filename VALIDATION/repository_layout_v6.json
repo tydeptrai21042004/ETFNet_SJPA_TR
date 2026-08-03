@@ -1,0 +1,571 @@
+{
+  "limit": 100,
+  "folders_checked": 141,
+  "violations": [],
+  "folders": [
+    {
+      "folder": ".github",
+      "recursive_files": 2
+    },
+    {
+      "folder": ".github/workflows",
+      "recursive_files": 2
+    },
+    {
+      "folder": "VALIDATION",
+      "recursive_files": 29
+    },
+    {
+      "folder": "VALIDATION/logs",
+      "recursive_files": 0
+    },
+    {
+      "folder": "docker",
+      "recursive_files": 7
+    },
+    {
+      "folder": "docs",
+      "recursive_files": 21
+    },
+    {
+      "folder": "docs/overrides",
+      "recursive_files": 5
+    },
+    {
+      "folder": "docs/overrides/assets",
+      "recursive_files": 1
+    },
+    {
+      "folder": "docs/overrides/javascript",
+      "recursive_files": 1
+    },
+    {
+      "folder": "docs/overrides/partials",
+      "recursive_files": 2
+    },
+    {
+      "folder": "docs/overrides/stylesheets",
+      "recursive_files": 1
+    },
+    {
+      "folder": "docs_en_main",
+      "recursive_files": 89
+    },
+    {
+      "folder": "docs_en_main/guides",
+      "recursive_files": 23
+    },
+    {
+      "folder": "docs_en_main/help",
+      "recursive_files": 10
+    },
+    {
+      "folder": "docs_en_main/hub",
+      "recursive_files": 10
+    },
+    {
+      "folder": "docs_en_main/hub/app",
+      "recursive_files": 3
+    },
+    {
+      "folder": "docs_en_main/integrations",
+      "recursive_files": 12
+    },
+    {
+      "folder": "docs_en_main/models",
+      "recursive_files": 12
+    },
+    {
+      "folder": "docs_en_main/modes",
+      "recursive_files": 7
+    },
+    {
+      "folder": "docs_en_main/tasks",
+      "recursive_files": 6
+    },
+    {
+      "folder": "docs_en_main/usage",
+      "recursive_files": 5
+    },
+    {
+      "folder": "docs_en_reference_core",
+      "recursive_files": 40
+    },
+    {
+      "folder": "docs_en_reference_core/reference",
+      "recursive_files": 40
+    },
+    {
+      "folder": "docs_en_reference_core/reference/cfg",
+      "recursive_files": 1
+    },
+    {
+      "folder": "docs_en_reference_core/reference/data",
+      "recursive_files": 9
+    },
+    {
+      "folder": "docs_en_reference_core/reference/engine",
+      "recursive_files": 7
+    },
+    {
+      "folder": "docs_en_reference_core/reference/hub",
+      "recursive_files": 4
+    },
+    {
+      "folder": "docs_en_reference_core/reference/nn",
+      "recursive_files": 7
+    },
+    {
+      "folder": "docs_en_reference_core/reference/nn/modules",
+      "recursive_files": 5
+    },
+    {
+      "folder": "docs_en_reference_core/reference/solutions",
+      "recursive_files": 5
+    },
+    {
+      "folder": "docs_en_reference_core/reference/trackers",
+      "recursive_files": 7
+    },
+    {
+      "folder": "docs_en_reference_core/reference/trackers/utils",
+      "recursive_files": 3
+    },
+    {
+      "folder": "docs_en_reference_models",
+      "recursive_files": 39
+    },
+    {
+      "folder": "docs_en_reference_models/reference",
+      "recursive_files": 39
+    },
+    {
+      "folder": "docs_en_reference_models/reference/models",
+      "recursive_files": 39
+    },
+    {
+      "folder": "docs_en_reference_models/reference/models/fastsam",
+      "recursive_files": 5
+    },
+    {
+      "folder": "docs_en_reference_models/reference/models/nas",
+      "recursive_files": 3
+    },
+    {
+      "folder": "docs_en_reference_models/reference/models/rtdetr",
+      "recursive_files": 4
+    },
+    {
+      "folder": "docs_en_reference_models/reference/models/sam",
+      "recursive_files": 9
+    },
+    {
+      "folder": "docs_en_reference_models/reference/models/sam/modules",
+      "recursive_files": 5
+    },
+    {
+      "folder": "docs_en_reference_models/reference/models/utils",
+      "recursive_files": 2
+    },
+    {
+      "folder": "docs_en_reference_models/reference/models/yolo",
+      "recursive_files": 16
+    },
+    {
+      "folder": "docs_en_reference_models/reference/models/yolo/classify",
+      "recursive_files": 3
+    },
+    {
+      "folder": "docs_en_reference_models/reference/models/yolo/detect",
+      "recursive_files": 3
+    },
+    {
+      "folder": "docs_en_reference_models/reference/models/yolo/obb",
+      "recursive_files": 3
+    },
+    {
+      "folder": "docs_en_reference_models/reference/models/yolo/pose",
+      "recursive_files": 3
+    },
+    {
+      "folder": "docs_en_reference_models/reference/models/yolo/segment",
+      "recursive_files": 3
+    },
+    {
+      "folder": "docs_en_reference_utils",
+      "recursive_files": 28
+    },
+    {
+      "folder": "docs_en_reference_utils/reference",
+      "recursive_files": 28
+    },
+    {
+      "folder": "docs_en_reference_utils/reference/utils",
+      "recursive_files": 28
+    },
+    {
+      "folder": "docs_en_reference_utils/reference/utils/callbacks",
+      "recursive_files": 10
+    },
+    {
+      "folder": "docs_en_yolov5",
+      "recursive_files": 22
+    },
+    {
+      "folder": "docs_en_yolov5/yolov5",
+      "recursive_files": 22
+    },
+    {
+      "folder": "docs_en_yolov5/yolov5/environments",
+      "recursive_files": 4
+    },
+    {
+      "folder": "docs_en_yolov5/yolov5/tutorials",
+      "recursive_files": 16
+    },
+    {
+      "folder": "docs_i18n_a",
+      "recursive_files": 78
+    },
+    {
+      "folder": "docs_i18n_a/ar",
+      "recursive_files": 26
+    },
+    {
+      "folder": "docs_i18n_a/ar/models",
+      "recursive_files": 12
+    },
+    {
+      "folder": "docs_i18n_a/ar/modes",
+      "recursive_files": 7
+    },
+    {
+      "folder": "docs_i18n_a/ar/tasks",
+      "recursive_files": 5
+    },
+    {
+      "folder": "docs_i18n_a/de",
+      "recursive_files": 26
+    },
+    {
+      "folder": "docs_i18n_a/de/models",
+      "recursive_files": 12
+    },
+    {
+      "folder": "docs_i18n_a/de/modes",
+      "recursive_files": 7
+    },
+    {
+      "folder": "docs_i18n_a/de/tasks",
+      "recursive_files": 5
+    },
+    {
+      "folder": "docs_i18n_a/es",
+      "recursive_files": 26
+    },
+    {
+      "folder": "docs_i18n_a/es/models",
+      "recursive_files": 12
+    },
+    {
+      "folder": "docs_i18n_a/es/modes",
+      "recursive_files": 7
+    },
+    {
+      "folder": "docs_i18n_a/es/tasks",
+      "recursive_files": 5
+    },
+    {
+      "folder": "docs_i18n_b",
+      "recursive_files": 78
+    },
+    {
+      "folder": "docs_i18n_b/fr",
+      "recursive_files": 26
+    },
+    {
+      "folder": "docs_i18n_b/fr/models",
+      "recursive_files": 12
+    },
+    {
+      "folder": "docs_i18n_b/fr/modes",
+      "recursive_files": 7
+    },
+    {
+      "folder": "docs_i18n_b/fr/tasks",
+      "recursive_files": 5
+    },
+    {
+      "folder": "docs_i18n_b/hi",
+      "recursive_files": 26
+    },
+    {
+      "folder": "docs_i18n_b/hi/models",
+      "recursive_files": 12
+    },
+    {
+      "folder": "docs_i18n_b/hi/modes",
+      "recursive_files": 7
+    },
+    {
+      "folder": "docs_i18n_b/hi/tasks",
+      "recursive_files": 5
+    },
+    {
+      "folder": "docs_i18n_b/ja",
+      "recursive_files": 26
+    },
+    {
+      "folder": "docs_i18n_b/ja/models",
+      "recursive_files": 12
+    },
+    {
+      "folder": "docs_i18n_b/ja/modes",
+      "recursive_files": 7
+    },
+    {
+      "folder": "docs_i18n_b/ja/tasks",
+      "recursive_files": 5
+    },
+    {
+      "folder": "docs_i18n_c",
+      "recursive_files": 78
+    },
+    {
+      "folder": "docs_i18n_c/ko",
+      "recursive_files": 26
+    },
+    {
+      "folder": "docs_i18n_c/ko/models",
+      "recursive_files": 12
+    },
+    {
+      "folder": "docs_i18n_c/ko/modes",
+      "recursive_files": 7
+    },
+    {
+      "folder": "docs_i18n_c/ko/tasks",
+      "recursive_files": 5
+    },
+    {
+      "folder": "docs_i18n_c/pt",
+      "recursive_files": 26
+    },
+    {
+      "folder": "docs_i18n_c/pt/models",
+      "recursive_files": 12
+    },
+    {
+      "folder": "docs_i18n_c/pt/modes",
+      "recursive_files": 7
+    },
+    {
+      "folder": "docs_i18n_c/pt/tasks",
+      "recursive_files": 5
+    },
+    {
+      "folder": "docs_i18n_c/ru",
+      "recursive_files": 26
+    },
+    {
+      "folder": "docs_i18n_c/ru/models",
+      "recursive_files": 12
+    },
+    {
+      "folder": "docs_i18n_c/ru/modes",
+      "recursive_files": 7
+    },
+    {
+      "folder": "docs_i18n_c/ru/tasks",
+      "recursive_files": 5
+    },
+    {
+      "folder": "docs_i18n_d",
+      "recursive_files": 26
+    },
+    {
+      "folder": "docs_i18n_d/zh",
+      "recursive_files": 26
+    },
+    {
+      "folder": "docs_i18n_d/zh/models",
+      "recursive_files": 12
+    },
+    {
+      "folder": "docs_i18n_d/zh/modes",
+      "recursive_files": 7
+    },
+    {
+      "folder": "docs_i18n_d/zh/tasks",
+      "recursive_files": 5
+    },
+    {
+      "folder": "tests",
+      "recursive_files": 18
+    },
+    {
+      "folder": "tests/fixtures",
+      "recursive_files": 1
+    },
+    {
+      "folder": "tools",
+      "recursive_files": 6
+    },
+    {
+      "folder": "ultra_modeling",
+      "recursive_files": 62
+    },
+    {
+      "folder": "ultra_modeling/models",
+      "recursive_files": 52
+    },
+    {
+      "folder": "ultra_modeling/models/fastsam",
+      "recursive_files": 6
+    },
+    {
+      "folder": "ultra_modeling/models/nas",
+      "recursive_files": 4
+    },
+    {
+      "folder": "ultra_modeling/models/rtdetr",
+      "recursive_files": 5
+    },
+    {
+      "folder": "ultra_modeling/models/sam",
+      "recursive_files": 11
+    },
+    {
+      "folder": "ultra_modeling/models/sam/modules",
+      "recursive_files": 6
+    },
+    {
+      "folder": "ultra_modeling/models/utils",
+      "recursive_files": 3
+    },
+    {
+      "folder": "ultra_modeling/models/yolo",
+      "recursive_files": 22
+    },
+    {
+      "folder": "ultra_modeling/models/yolo/classify",
+      "recursive_files": 4
+    },
+    {
+      "folder": "ultra_modeling/models/yolo/detect",
+      "recursive_files": 4
+    },
+    {
+      "folder": "ultra_modeling/models/yolo/obb",
+      "recursive_files": 4
+    },
+    {
+      "folder": "ultra_modeling/models/yolo/pose",
+      "recursive_files": 4
+    },
+    {
+      "folder": "ultra_modeling/models/yolo/segment",
+      "recursive_files": 4
+    },
+    {
+      "folder": "ultra_modeling/nn",
+      "recursive_files": 10
+    },
+    {
+      "folder": "ultra_modeling/nn/modules",
+      "recursive_files": 7
+    },
+    {
+      "folder": "ultra_runtime",
+      "recursive_files": 35
+    },
+    {
+      "folder": "ultra_runtime/data",
+      "recursive_files": 23
+    },
+    {
+      "folder": "ultra_runtime/data/explorer",
+      "recursive_files": 5
+    },
+    {
+      "folder": "ultra_runtime/data/explorer/gui",
+      "recursive_files": 2
+    },
+    {
+      "folder": "ultra_runtime/data/scripts",
+      "recursive_files": 4
+    },
+    {
+      "folder": "ultra_runtime/engine",
+      "recursive_files": 8
+    },
+    {
+      "folder": "ultra_runtime/hub",
+      "recursive_files": 4
+    },
+    {
+      "folder": "ultra_services",
+      "recursive_files": 46
+    },
+    {
+      "folder": "ultra_services/solutions",
+      "recursive_files": 6
+    },
+    {
+      "folder": "ultra_services/trackers",
+      "recursive_files": 10
+    },
+    {
+      "folder": "ultra_services/trackers/utils",
+      "recursive_files": 4
+    },
+    {
+      "folder": "ultra_services/utils",
+      "recursive_files": 30
+    },
+    {
+      "folder": "ultra_services/utils/callbacks",
+      "recursive_files": 11
+    },
+    {
+      "folder": "ultralytics",
+      "recursive_files": 39
+    },
+    {
+      "folder": "ultralytics/cfg",
+      "recursive_files": 38
+    },
+    {
+      "folder": "ultralytics/cfg/datasets",
+      "recursive_files": 1
+    },
+    {
+      "folder": "ultralytics/cfg/models",
+      "recursive_files": 33
+    },
+    {
+      "folder": "ultralytics/cfg/models/etfnet",
+      "recursive_files": 12
+    },
+    {
+      "folder": "ultralytics/cfg/models/v3",
+      "recursive_files": 3
+    },
+    {
+      "folder": "ultralytics/cfg/models/v5",
+      "recursive_files": 2
+    },
+    {
+      "folder": "ultralytics/cfg/models/v6",
+      "recursive_files": 1
+    },
+    {
+      "folder": "ultralytics/cfg/models/v8",
+      "recursive_files": 14
+    },
+    {
+      "folder": "ultralytics/cfg/trackers",
+      "recursive_files": 2
+    }
+  ]
+}

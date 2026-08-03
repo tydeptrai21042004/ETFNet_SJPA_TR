@@ -1,0 +1,66 @@
+{
+  "release": "8.0.238+etfnetsjpa.5",
+  "ok": true,
+  "pytest": {
+    "passed": 78,
+    "warnings": 3
+  },
+  "datasets": {
+    "m3fd": {
+      "ok": true,
+      "stages": [
+        "prepare",
+        "preflight",
+        "train",
+        "validate",
+        "paired_predict"
+      ]
+    },
+    "vedai": {
+      "ok": true,
+      "stages": [
+        "prepare",
+        "preflight",
+        "train",
+        "validate",
+        "paired_predict"
+      ]
+    },
+    "flir-aligned": {
+      "ok": true,
+      "stages": [
+        "prepare",
+        "preflight",
+        "train",
+        "validate",
+        "paired_predict"
+      ]
+    },
+    "rgbtdroneperson": {
+      "ok": true,
+      "stages": [
+        "prepare",
+        "preflight",
+        "train",
+        "validate",
+        "paired_predict"
+      ]
+    },
+    "cvc-14": {
+      "ok": true,
+      "stages": [
+        "prepare",
+        "preflight",
+        "train",
+        "validate",
+        "paired_predict"
+      ]
+    }
+  },
+  "torchscript": {
+    "dataset": "m3fd",
+    "export": true,
+    "paired_inference": true
+  },
+  "full_public_archives_downloaded": false
+}

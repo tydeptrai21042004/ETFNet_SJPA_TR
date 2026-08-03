@@ -1,0 +1,11 @@
+{
+  "continuous_best_fitness": 0.18905,
+  "continuous_epoch": 1,
+  "continuous_updates": 3,
+  "ema_differences": [],
+  "exact": true,
+  "model_differences": [],
+  "resumed_best_fitness": 0.18905,
+  "resumed_epoch": 1,
+  "resumed_updates": 3
+}

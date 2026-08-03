@@ -1,0 +1,53 @@
+{
+  "environment": {
+    "platform": "Linux-6.12.13-x86_64-with-glibc2.41",
+    "python": "3.13.5 (main, May  5 2026, 21:05:52) [GCC 14.2.0]"
+  },
+  "ok": true,
+  "results": [
+    {
+      "command": [
+        "/opt/pyvenv/bin/python",
+        "tests/exact_resume_check.py",
+        "--output",
+        "VALIDATION/exact_resume_v3.json"
+      ],
+      "duration_seconds": 13.110066238999934,
+      "log": "VALIDATION/logs/exact_resume.log",
+      "name": "exact_resume",
+      "ok": true,
+      "returncode": 0,
+      "tail": [
+        "",
+        "Validating /tmp/etfnet_exact_resume_rz47st9x/runs/interrupted/weights/best.pt...",
+        "Ultralytics YOLOv8.0.238+etfnetsjpa.3 \ud83d\ude80 Python-3.13.5 torch-2.10.0+cpu CPU (AMD EPYC 9V74 80-Core Processor)",
+        "tiny_sjpa_obb summary (fused): 82 layers, 828166 parameters, 0 gradients",
+        "",
+        "                 Class     Images  Instances      Box(P          R      mAP50  mAP50-95):   0%|          | 0/1 [00:00<?, ?it/s]",
+        "                 Class     Images  Instances      Box(P          R      mAP50  mAP50-95): 100%|\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588| 1/1 [00:00<00:00, 81.80it/s]",
+        "                   all          2          2      0.167          1      0.995     0.0995",
+        "Speed: 0.0ms preprocess, 3.7ms inference, 0.0ms loss, 0.9ms postprocess per image",
+        "{",
+        "  \"continuous_best_fitness\": 0.18905,",
+        "  \"continuous_epoch\": 1,",
+        "  \"continuous_updates\": 3,",
+        "  \"ema_differences\": [],",
+        "  \"exact\": true,",
+        "  \"model_differences\": [],",
+        "  \"resumed_best_fitness\": 0.18905,",
+        "  \"resumed_epoch\": 1,",
+        "  \"resumed_updates\": 3",
+        "}"
+      ],
+      "timed_out": false
+    }
+  ],
+  "schema_version": 2,
+  "source_hashes": {
+    "block.py": "41e6fd2a5b1beca715f96da4d507eedd2a70306ec2df3f7741e636feb1057655",
+    "model_yaml": "53877db58facc52b28c1b12c569a1a6a17318b96aafafad2adef7e79e0aeb241",
+    "rgb_ir.py": "3dd47b123e57365ca291d5de0e9c46715e7d7f9b3c312c8c676f8265a5a99d4d",
+    "rgb_ir_check.py": "8e7fed77383d20eb1e97008b18284a33de3a6711dea39d117a52f733e82beeaf"
+  },
+  "stage": "exact-resume"
+}

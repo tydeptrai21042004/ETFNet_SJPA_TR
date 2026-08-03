@@ -1,0 +1,16 @@
+{
+  "q_orthogonality_max_error": 1.430511474609375e-06,
+  "precision_simplex_max_error": 0.0,
+  "trigger_min": 1.0,
+  "trigger_max": 1.0,
+  "trust_bound_max_violation_rgb": -1450.770751953125,
+  "trust_bound_max_violation_ir": -1440.761962890625,
+  "output_shape": [
+    4,
+    256,
+    32,
+    32
+  ],
+  "finite_input_gradients": true,
+  "running_updates_after_train_forward": 1
+}

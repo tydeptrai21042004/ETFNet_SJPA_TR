@@ -1,0 +1,5 @@
+# Optional public-dataset acquisition dependencies.
+# Install the project first, then: pip install -r requirements-data.txt
+gdown>=6.0,<7.0; python_version >= "3.10"
+py7zr>=0.22,<2.0
+modelscope>=1.36,<2.0; python_version >= "3.10"

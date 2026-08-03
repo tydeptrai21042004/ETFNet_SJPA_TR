@@ -1,0 +1,143 @@
+{
+  "environment": {
+    "platform": "Linux-6.12.13-x86_64-with-glibc2.41",
+    "python": "3.13.5 (main, May  5 2026, 21:05:52) [GCC 14.2.0]"
+  },
+  "ok": true,
+  "results": [
+    {
+      "command": [
+        "/opt/pyvenv/bin/python",
+        "-m",
+        "compileall",
+        "-q",
+        "ultralytics",
+        "etfnet_cli.py",
+        "tools",
+        "tests",
+        "VALIDATION"
+      ],
+      "duration_seconds": 0.515389922000395,
+      "log": "VALIDATION/logs/compileall.log",
+      "name": "compileall",
+      "ok": true,
+      "returncode": 0,
+      "tail": [],
+      "timed_out": false
+    },
+    {
+      "command": [
+        "/opt/pyvenv/bin/python",
+        "-m",
+        "pytest",
+        "-q"
+      ],
+      "duration_seconds": 8.940632498000014,
+      "log": "VALIDATION/logs/pytest.log",
+      "name": "pytest",
+      "ok": true,
+      "returncode": 0,
+      "tail": [
+        "  /opt/pyvenv/lib/python3.13/site-packages/torch/jit/_trace.py:1139: DeprecationWarning: `torch.jit.trace_method` is deprecated. Please switch to `torch.compile` or `torch.export`.",
+        "    warnings.warn(",
+        "",
+        "-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html",
+        "============================= slowest 20 durations =============================",
+        "2.71s call     tests/test_pipeline_reproducibility.py::test_all_shipped_etfnet_model_configs_build_and_forward",
+        "0.46s call     tests/test_pipeline_reproducibility.py::test_model_graph_forward_backward[model_path1-96]",
+        "0.17s call     tests/test_sjpa_math_extended.py::test_torchscript_trace_matches_export_mode_on_new_input",
+        "0.08s call     tests/test_pipeline_reproducibility.py::test_dataset_checker_detects_invalid_obb",
+        "0.06s call     tests/test_pipeline_reproducibility.py::test_manifest_is_machine_readable_and_hashes_source",
+        "0.05s call     tests/test_pipeline_reproducibility.py::test_model_graph_forward_backward[model_path0-64]",
+        "0.03s call     tests/test_rgb_ir_edge_cases.py::test_corrupt_image_is_detected_by_preflight",
+        "0.02s setup    tests/test_pipeline_reproducibility.py::test_pairing_channel_order_and_manifests",
+        "0.01s call     tests/test_rgb_ir_edge_cases.py::test_disk_cache_rebuilds_when_ir_source_is_newer",
+        "0.01s call     tests/test_pipeline_reproducibility.py::test_pairing_channel_order_and_manifests",
+        "0.01s call     tests/test_sjpa_math_extended.py::test_state_dict_roundtrip_preserves_eval_output",
+        "0.01s call     tests/test_sjpa_math_extended.py::test_prepare_for_export_matches_eval_for_zero_shift",
+        "",
+        "(8 durations < 0.005s hidden.  Use -vv to show these durations.)",
+        "49 passed, 3 warnings in 5.79s"
+      ],
+      "timed_out": false
+    },
+    {
+      "command": [
+        "/opt/pyvenv/bin/python",
+        "tests/smoke_pipeline.py"
+      ],
+      "duration_seconds": 3.7964074259998597,
+      "log": "VALIDATION/logs/smoke.log",
+      "name": "smoke",
+      "ok": true,
+      "returncode": 0,
+      "tail": [
+        " 14                  -1  1   1180672  ultralytics.nn.modules.conv.Conv             [256, 512, 3, 2]              ",
+        " 15                  -1  1    352144  ultralytics.nn.modules.block.CAFEM           [512, 512, 1]                 ",
+        " 16                  -1  1    656896  ultralytics.nn.modules.block.SPPF            [512, 512, 5]                 ",
+        " 17                  -1  1    990976  ultralytics.nn.modules.block.C2PSA           [512, 512, 1]                 ",
+        " 18                  -1  1         0  torch.nn.modules.upsampling.Upsample         [None, 2, 'nearest']          ",
+        " 19            [-1, 13]  1         0  ultralytics.nn.modules.conv.Concat           [1]                           ",
+        " 20                  -1  1    443776  ultralytics.nn.modules.block.C3k2            [768, 256, 1, False]          ",
+        " 21                  -1  1         0  torch.nn.modules.upsampling.Upsample         [None, 2, 'nearest']          ",
+        " 22            [-1, 11]  1         0  ultralytics.nn.modules.conv.Concat           [1]                           ",
+        " 23                  -1  1    127680  ultralytics.nn.modules.block.C3k2            [512, 128, 1, False]          ",
+        " 24                  -1  1    147712  ultralytics.nn.modules.conv.Conv             [128, 128, 3, 2]              ",
+        " 25            [-1, 20]  1         0  ultralytics.nn.modules.conv.Concat           [1]                           ",
+        " 26                  -1  1    345472  ultralytics.nn.modules.block.C3k2            [384, 256, 1, False]          ",
+        " 27                  -1  1    590336  ultralytics.nn.modules.conv.Conv             [256, 256, 3, 2]              ",
+        " 28            [-1, 17]  1         0  ultralytics.nn.modules.conv.Concat           [1]                           ",
+        " 29                  -1  1   1511424  ultralytics.nn.modules.block.C3k2            [768, 512, 1, True]           ",
+        " 30        [23, 26, 29]  1   2404162  ultralytics.nn.modules.head.OBB              [5, 1, [128, 256, 512]]       ",
+        "etfnet_P2_CAFEM_SJPA summary: 419 layers, 9981746 parameters, 9981730 gradients",
+        "",
+        "PASS: ETFNet-SJPA-TR lightweight smoke pipeline"
+      ],
+      "timed_out": false
+    },
+    {
+      "command": [
+        "/opt/pyvenv/bin/python",
+        "tools/validate_model_configs.py",
+        "--output",
+        "VALIDATION/model_configs_v3.json"
+      ],
+      "duration_seconds": 5.936641685999348,
+      "log": "VALIDATION/logs/model_configs.log",
+      "name": "model_configs",
+      "ok": true,
+      "returncode": 0,
+      "tail": [
+        "      \"channels\": 3,",
+        "      \"config\": \"ultralytics/cfg/models/etfnet/etfnet_yolo11.yaml\",",
+        "      \"ok\": true,",
+        "      \"parameters\": 3408670",
+        "    },",
+        "    {",
+        "      \"channels\": 3,",
+        "      \"config\": \"ultralytics/cfg/models/etfnet/noCAFEM_noTGF.yaml\",",
+        "      \"ok\": true,",
+        "      \"parameters\": 11012546",
+        "    },",
+        "    {",
+        "      \"channels\": 6,",
+        "      \"config\": \"ultralytics/cfg/models/etfnet/noCAFEM_noTGF_add.yaml\",",
+        "      \"ok\": true,",
+        "      \"parameters\": 11309186",
+        "    }",
+        "  ],",
+        "  \"ok\": true",
+        "}"
+      ],
+      "timed_out": false
+    }
+  ],
+  "schema_version": 2,
+  "source_hashes": {
+    "block.py": "41e6fd2a5b1beca715f96da4d507eedd2a70306ec2df3f7741e636feb1057655",
+    "model_yaml": "53877db58facc52b28c1b12c569a1a6a17318b96aafafad2adef7e79e0aeb241",
+    "rgb_ir.py": "3dd47b123e57365ca291d5de0e9c46715e7d7f9b3c312c8c676f8265a5a99d4d",
+    "rgb_ir_check.py": "8e7fed77383d20eb1e97008b18284a33de3a6711dea39d117a52f733e82beeaf"
+  },
+  "stage": "quick"
+}

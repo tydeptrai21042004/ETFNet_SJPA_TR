@@ -1,0 +1,77 @@
+{
+  "models": [
+    {
+      "channels": 6,
+      "config": "ultralytics/cfg/models/etfnet/etfnet_CAFEM_noTGF.yaml",
+      "ok": true,
+      "parameters": 9981746
+    },
+    {
+      "channels": 6,
+      "config": "ultralytics/cfg/models/etfnet/etfnet_P2_3.yaml",
+      "ok": true,
+      "parameters": 13478684
+    },
+    {
+      "channels": 6,
+      "config": "ultralytics/cfg/models/etfnet/etfnet_P2_CAFEM_GOCI.yaml",
+      "ok": true,
+      "parameters": 9981746
+    },
+    {
+      "channels": 6,
+      "config": "ultralytics/cfg/models/etfnet/etfnet_P2_CAFEM_SJPA.yaml",
+      "ok": true,
+      "parameters": 9981746
+    },
+    {
+      "channels": 6,
+      "config": "ultralytics/cfg/models/etfnet/etfnet_P2_CAFEM_TGF.yaml",
+      "ok": true,
+      "parameters": 10540023
+    },
+    {
+      "channels": 6,
+      "config": "ultralytics/cfg/models/etfnet/etfnet_P3.yaml",
+      "ok": true,
+      "parameters": 12920407
+    },
+    {
+      "channels": 6,
+      "config": "ultralytics/cfg/models/etfnet/etfnet_P3_4_5.yaml",
+      "ok": true,
+      "parameters": 28260625
+    },
+    {
+      "channels": 6,
+      "config": "ultralytics/cfg/models/etfnet/etfnet_dualstream_noCAFEM_noTGF.yaml",
+      "ok": true,
+      "parameters": 11205570
+    },
+    {
+      "channels": 6,
+      "config": "ultralytics/cfg/models/etfnet/etfnet_noCAFEM_TGF.yaml",
+      "ok": true,
+      "parameters": 12699623
+    },
+    {
+      "channels": 3,
+      "config": "ultralytics/cfg/models/etfnet/etfnet_yolo11.yaml",
+      "ok": true,
+      "parameters": 3408670
+    },
+    {
+      "channels": 3,
+      "config": "ultralytics/cfg/models/etfnet/noCAFEM_noTGF.yaml",
+      "ok": true,
+      "parameters": 11012546
+    },
+    {
+      "channels": 6,
+      "config": "ultralytics/cfg/models/etfnet/noCAFEM_noTGF_add.yaml",
+      "ok": true,
+      "parameters": 11309186
+    }
+  ],
+  "ok": true
+}

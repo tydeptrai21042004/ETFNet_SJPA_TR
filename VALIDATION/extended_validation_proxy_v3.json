@@ -1,0 +1,63 @@
+{
+  "environment": {
+    "platform": "Linux-6.12.13-x86_64-with-glibc2.41",
+    "python": "3.13.5 (main, May  5 2026, 21:05:52) [GCC 14.2.0]"
+  },
+  "ok": true,
+  "results": [
+    {
+      "command": [
+        "/opt/pyvenv/bin/python",
+        "VALIDATION/benchmark_realistic_proxy.py",
+        "--seeds",
+        "0",
+        "1",
+        "2",
+        "3",
+        "4",
+        "--epochs",
+        "8",
+        "--threads",
+        "1",
+        "--output",
+        "VALIDATION/realistic_proxy_5seed_v3.json"
+      ],
+      "duration_seconds": 22.683308521000072,
+      "log": "VALIDATION/logs/realistic_proxy.log",
+      "name": "realistic_proxy",
+      "ok": true,
+      "returncode": 0,
+      "tail": [
+        "    \"missing_ir\": {",
+        "      \"strongest_baseline\": \"pbtr\",",
+        "      \"mean_difference\": 0.17667810031033565,",
+        "      \"t_statistic\": 4.92930355740465,",
+        "      \"one_sided_p\": 0.003938383141855561",
+        "    },",
+        "    \"ir_shift\": {",
+        "      \"strongest_baseline\": \"pbtr\",",
+        "      \"mean_difference\": 0.27409174915987855,",
+        "      \"t_statistic\": 6.915666049355202,",
+        "      \"one_sided_p\": 0.0011469611271074183",
+        "    },",
+        "    \"mixed\": {",
+        "      \"strongest_baseline\": \"pbtr\",",
+        "      \"mean_difference\": -0.014740902348312972,",
+        "      \"t_statistic\": -2.9513315080281317,",
+        "      \"one_sided_p\": 0.9790430826136847",
+        "    }",
+        "  }",
+        "}"
+      ],
+      "timed_out": false
+    }
+  ],
+  "schema_version": 2,
+  "source_hashes": {
+    "block.py": "41e6fd2a5b1beca715f96da4d507eedd2a70306ec2df3f7741e636feb1057655",
+    "model_yaml": "53877db58facc52b28c1b12c569a1a6a17318b96aafafad2adef7e79e0aeb241",
+    "rgb_ir.py": "3dd47b123e57365ca291d5de0e9c46715e7d7f9b3c312c8c676f8265a5a99d4d",
+    "rgb_ir_check.py": "8e7fed77383d20eb1e97008b18284a33de3a6711dea39d117a52f733e82beeaf"
+  },
+  "stage": "proxy"
+}

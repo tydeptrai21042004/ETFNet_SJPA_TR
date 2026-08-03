@@ -1,0 +1,24 @@
+{
+  "version": "8.0.238+etfnetsjpa.6",
+  "source_imports": "passed",
+  "pytest": {"passed": 81, "failed": 0},
+  "model_configs": {"passed": 12, "failed": 0},
+  "public_dataset_adapters": ["m3fd", "vedai", "flir-aligned", "rgbtdroneperson", "cvc-14", "nii-cu-mapd"],
+  "synthetic_pipeline": {
+    "dataset_preflight": "passed",
+    "one_epoch_training": "passed",
+    "validation": "passed",
+    "paired_prediction": "passed",
+    "torchscript_export": "passed",
+    "torchscript_prediction": "passed"
+  },
+  "wheel": {
+    "build": "passed",
+    "isolated_target_install": "passed",
+    "six_channel_model_forward": "passed",
+    "configuration_resources": "passed",
+    "dataset_registry": "passed"
+  },
+  "documentation_workspace": {"assembled_files": 478, "status": "passed"},
+  "folder_policy": {"recursive_limit": 100, "violations": 0, "largest_committed_subfolder": "docs_en_main", "largest_file_count": 89}
+}
