@@ -1768,6 +1768,54 @@ class GOCI(nn.Module):
         self._cached_version = None
         self._cached_eval = None
 
+    def _apply(self, fn):
+        """Apply a device/dtype transform and invalidate derived transform caches.
+
+        ``_cached_eval`` is intentionally not a registered buffer because it is
+        derived from the running statistics.  PyTorch therefore does not move it
+        during ``module.to(...)``/``half()``/``float()``.  A checkpoint may also
+        contain a stale CPU cache.  Clearing it here guarantees that the next
+        evaluation recomputes the transforms from buffers on the target device.
+        """
+        result = super()._apply(fn)
+        self._cached_eval = None
+        self._cached_version = None
+        return result
+
+    def __getstate__(self):
+        """Exclude derived evaluation transforms from Python checkpoints.
+
+        The cache is entirely determined by registered running-statistic buffers.
+        Serializing it increases checkpoint size and can retain tensors from the
+        device on which evaluation last ran.  Dropping it makes raw ``torch.save``
+        checkpoints as safe as the repository's stripped training checkpoints.
+        """
+        state = super().__getstate__()
+        state['_cached_eval'] = None
+        state['_cached_version'] = None
+        return state
+
+    def __setstate__(self, state):
+        """Restore a module while guaranteeing that derived caches are fresh."""
+        super().__setstate__(state)
+        self._cached_eval = None
+        self._cached_version = None
+
+    def _load_from_state_dict(self, state_dict, prefix, local_metadata, strict,
+                              missing_keys, unexpected_keys, error_msgs):
+        """Invalidate derived transforms after loading authoritative buffers.
+
+        ``load_state_dict`` can replace running statistics while leaving the old
+        update counter unchanged.  A version-only cache key would then reuse stale
+        transforms.  Clearing the cache here guarantees recomputation from the newly
+        loaded buffers.  Non-persistent export transforms are also rebuilt on demand.
+        """
+        super()._load_from_state_dict(state_dict, prefix, local_metadata, strict,
+                                      missing_keys, unexpected_keys, error_msgs)
+        self._cached_eval = None
+        self._cached_version = None
+        self.export_mode = False
+
     def _group_tokens(self, x: torch.Tensor) -> torch.Tensor:
         b, _, h, w = x.shape
         return x.reshape(b, self.groups, self.group_width, h * w).permute(1, 0, 3, 2).reshape(
@@ -1849,14 +1897,24 @@ class GOCI(nn.Module):
         stats = (self.running_mu_r, self.running_mu_i, self.running_cov_r,
                  self.running_cov_i, self.running_cross)
         version = int(self.num_updates.item())
-        if self._cached_eval is None or self._cached_version != version:
-            self._cached_eval = tuple(t.detach() for t in self._transforms(*stats))
+        cache_device_ok = (self._cached_eval is not None and
+                           all(t.device == r.device for t in self._cached_eval))
+        if self._cached_eval is None or self._cached_version != version or not cache_device_ok:
+            # A serialized model can carry a derived cache created on CPU even
+            # after registered buffers have moved to CUDA.  Recompute from the
+            # authoritative running buffers on the current input device.
+            device_stats = tuple(t.to(device=r.device, dtype=torch.float32) for t in stats)
+            self._cached_eval = tuple(t.detach() for t in self._transforms(*device_stats))
             self._cached_version = version
         return self._cached_eval
 
     def _apply_whitening(self, x, mu, matrix):
         b, c, h, width = x.shape
         dtype = x.dtype
+        # Defensive device normalization also protects old checkpoints that may
+        # contain a non-buffer derived cache on CPU.
+        mu = mu.to(device=x.device, dtype=torch.float32)
+        matrix = matrix.to(device=x.device, dtype=torch.float32)
         xt = x.float().reshape(b, self.groups, self.group_width, h * width).permute(0, 1, 3, 2)
         y = (xt - mu.unsqueeze(0)) @ matrix.unsqueeze(0)
         return y.permute(0, 1, 3, 2).reshape(b, c, h, width).to(dtype)
@@ -1868,6 +1926,7 @@ class GOCI(nn.Module):
         bs, c, h, width = a.shape
         dtype = a.dtype
         at = a.float().reshape(bs, self.groups, self.group_width, h * width).permute(0, 1, 3, 2)
+        q = q.to(device=at.device, dtype=torch.float32)
         at = at @ q.unsqueeze(0)
         a = at.permute(0, 1, 3, 2).reshape(bs, c, h, width).to(dtype)
         return a, b

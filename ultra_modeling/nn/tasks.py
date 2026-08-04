@@ -611,6 +611,10 @@ def attempt_load_weights(weights, device=None, inplace=True, fuse=False):
         ckpt, w = torch_safe_load(w)  # load ckpt
         args = {**DEFAULT_CFG_DICT, **ckpt['train_args']} if 'train_args' in ckpt else None  # combined args
         model = (ckpt.get('ema') or ckpt['model']).to(device).float()  # FP32 model
+        for module in model.modules():
+            if hasattr(module, '_cached_eval'):
+                module._cached_eval = None
+                module._cached_version = None
 
         # Model compatibility updates
         model.args = args  # attach args to model
@@ -648,6 +652,10 @@ def attempt_load_one_weight(weight, device=None, inplace=True, fuse=False):
     ckpt, weight = torch_safe_load(weight)  # load ckpt
     args = {**DEFAULT_CFG_DICT, **(ckpt.get('train_args', {}))}  # combine model and default args, preferring model args
     model = (ckpt.get('ema') or ckpt['model']).to(device).float()  # FP32 model
+    for module in model.modules():
+        if hasattr(module, '_cached_eval'):
+            module._cached_eval = None
+            module._cached_version = None
 
     # Model compatibility updates
     model.args = {k: v for k, v in args.items() if k in DEFAULT_CFG_KEYS}  # attach args to model

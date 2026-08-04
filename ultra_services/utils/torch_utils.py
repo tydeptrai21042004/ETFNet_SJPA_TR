@@ -483,6 +483,13 @@ def strip_optimizer(f: Union[str, Path] = 'best.pt', s: str = '') -> None:
         x[k] = None
     x['epoch'] = -1
     x['model'].half()  # to FP16
+    # Derived alignment caches are not state and must never be serialized with
+    # a checkpoint. They may otherwise retain the CPU device used by torch_load
+    # and fail when final validation moves the model to CUDA.
+    for module in x['model'].modules():
+        if hasattr(module, '_cached_eval'):
+            module._cached_eval = None
+            module._cached_version = None
     for p in x['model'].parameters():
         p.requires_grad = False
     x['train_args'] = {k: v for k, v in args.items() if k in DEFAULT_CFG_KEYS}  # strip non-default keys

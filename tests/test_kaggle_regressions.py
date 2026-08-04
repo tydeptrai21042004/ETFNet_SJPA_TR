@@ -104,3 +104,137 @@ def test_cli_infers_rgb_and_rgb_ir_model_channels():
     rgb_ir = YOLO(str(root / 'ultralytics/cfg/models/etfnet/etfnet_P2_CAFEM_SJPA.yaml'))
     assert _model_channels(rgb) == 3
     assert _model_channels(rgb_ir) == 6
+
+
+
+def test_eval_cache_is_invalidated_by_module_apply():
+    """Derived transforms must not survive dtype/device application."""
+    from ultralytics.nn.modules.block import GOCI
+
+    module = GOCI(8, groups=2, anchors=4).eval()
+    rgb = torch.randn(2, 8, 12, 12)
+    ir = torch.randn_like(rgb)
+    module([rgb, ir])
+    assert module._cached_eval is not None
+    module.double()  # nn.Module._apply path used by .to(), .cuda(), .half(), .float()
+    assert module._cached_eval is None
+    assert module._cached_version is None
+
+
+def test_eval_rebuilds_stale_cache_on_input_device():
+    """Simulate a checkpoint carrying a stale cache on another device."""
+    from ultralytics.nn.modules.block import GOCI
+
+    module = GOCI(8, groups=2, anchors=4).eval()
+    rgb = torch.randn(2, 8, 12, 12)
+    ir = torch.randn_like(rgb)
+    module([rgb, ir])
+    version = module._cached_version
+    # Meta tensors emulate an inaccessible stale device without requiring CUDA.
+    module._cached_eval = tuple(torch.empty_like(value, device='meta') for value in module._cached_eval)
+    module._cached_version = version
+    output = module([rgb, ir])
+    assert output.device.type == 'cpu'
+    assert all(value.device.type == 'cpu' for value in module._cached_eval)
+    assert torch.isfinite(output).all()
+
+
+def test_stripped_checkpoint_clears_alignment_cache(tmp_path: Path):
+    """The final-eval checkpoint must not serialize a derived CPU/GPU cache."""
+    from ultralytics.nn.modules.block import GOCI
+    from ultralytics.utils.torch_utils import strip_optimizer
+
+    module = GOCI(8, groups=2, anchors=4).eval()
+    rgb = torch.randn(2, 8, 12, 12)
+    ir = torch.randn_like(rgb)
+    module([rgb, ir])
+    assert module._cached_eval is not None
+
+    holder = torch.nn.Sequential(module)
+    holder.args = {}
+    path = tmp_path / 'model.pt'
+    torch.save({'model': holder, 'ema': None, 'optimizer': {}, 'train_args': {}}, path)
+    strip_optimizer(path)
+    loaded = torch.load(path, map_location='cpu', weights_only=False)['model']
+    assert loaded[0]._cached_eval is None
+    assert loaded[0]._cached_version is None
+
+
+def test_raw_pickle_roundtrip_drops_alignment_cache(tmp_path: Path):
+    """Plain torch.save/torch.load must not retain derived transforms."""
+    from ultralytics.nn.modules.block import GOCI
+
+    module = GOCI(8, groups=2, anchors=4).eval()
+    rgb = torch.randn(2, 8, 12, 12)
+    ir = torch.randn_like(rgb)
+    reference = module([rgb, ir])
+    assert module._cached_eval is not None
+
+    path = tmp_path / 'raw_module.pt'
+    torch.save(module, path)
+    loaded = torch.load(path, map_location='cpu', weights_only=False).eval()
+    assert loaded._cached_eval is None
+    assert loaded._cached_version is None
+    actual = loaded([rgb, ir])
+    torch.testing.assert_close(actual, reference, rtol=1e-5, atol=1e-6)
+
+
+def test_load_state_dict_invalidates_same_version_cache():
+    """New running buffers must be used even when num_updates is unchanged."""
+    from ultralytics.nn.modules.block import GOCI
+
+    target = GOCI(8, groups=2, anchors=4).eval()
+    source = GOCI(8, groups=2, anchors=4).eval()
+    rgb = torch.randn(2, 8, 12, 12)
+    ir = torch.randn_like(rgb)
+
+    with torch.no_grad():
+        target.num_updates.fill_(5)
+        source.num_updates.fill_(5)
+        source.running_mu_r.fill_(0.75)
+        source.running_mu_i.fill_(-0.5)
+        source.running_cov_r.mul_(1.7)
+        source.running_cov_i.mul_(0.6)
+        source.running_cross.mul_(-1.0)
+
+    before = target([rgb, ir])
+    assert target._cached_eval is not None and target._cached_version == 5
+    target.load_state_dict(source.state_dict())
+    assert target._cached_eval is None
+    assert target._cached_version is None
+    after = target([rgb, ir])
+    expected = source([rgb, ir])
+    assert not torch.allclose(after, before)
+    torch.testing.assert_close(after, expected, rtol=1e-5, atol=1e-6)
+
+
+def test_load_state_dict_disables_stale_export_mode():
+    """Non-persistent export transforms cannot survive a state-dict replacement."""
+    from ultralytics.nn.modules.block import GOCI
+
+    target = GOCI(8, groups=2, anchors=4).eval().prepare_for_export()
+    assert target.export_mode
+    source = GOCI(8, groups=2, anchors=4).eval()
+    with torch.no_grad():
+        source.running_mu_r.fill_(0.25)
+        source.num_updates.fill_(2)
+    target.load_state_dict(source.state_dict())
+    assert target.export_mode is False
+    assert target._cached_eval is None
+
+
+def test_deepcopy_drops_derived_alignment_cache():
+    """Model copies used by EMA/checkpoint code must not clone stale caches."""
+    import copy
+    from ultralytics.nn.modules.block import SJPA
+
+    module = SJPA(8, groups=2, anchors=4, max_shift=1).eval()
+    rgb = torch.randn(2, 8, 12, 12)
+    ir = torch.randn_like(rgb)
+    module([rgb, ir])
+    assert module._cached_eval is not None
+    cloned = copy.deepcopy(module)
+    assert cloned._cached_eval is None
+    assert cloned._cached_version is None
+    output = cloned([rgb, ir])
+    assert torch.isfinite(output).all()
