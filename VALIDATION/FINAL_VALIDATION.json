@@ -1,0 +1,19 @@
+{
+  "version": "8.0.238+etfnetsjpa.7",
+  "date": "2026-08-04",
+  "pytest": {"passed": 87, "warnings": 3},
+  "kaggle_regression_tests": {"passed": 6},
+  "model_yaml_build_forward": {"passed": 12, "total": 12},
+  "logical_one_epoch_training_configs": {"passed": 10, "total": 10},
+  "pipeline": {
+    "train": true,
+    "validate": true,
+    "paired_predict": true,
+    "torchscript_export": true,
+    "torchscript_predict": true
+  },
+  "optional_integration_failure_simulation": {"wandb": true, "ray": true, "training_completed": true},
+  "wheel_build_install_import": true,
+  "repository_layout_violations": 0,
+  "cuda_limit": "Final source package was not run through the complete public VEDAI ten-model benchmark locally; Kaggle cell performs a CUDA probe and real-data smoke test first."
+}

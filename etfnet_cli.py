@@ -22,6 +22,30 @@ def _device(value: str):
     return value if value else None
 
 
+
+
+def _model_channels(model: YOLO, fallback: int = 6) -> int:
+    """Infer the expected input channels from a YAML model or loaded checkpoint."""
+    candidates = []
+    inner = getattr(model, "model", None)
+    if inner is not None:
+        candidates.append(getattr(inner, "yaml", None))
+        candidates.append(getattr(inner, "args", None))
+    candidates.append(getattr(model, "overrides", None))
+    for candidate in candidates:
+        if isinstance(candidate, dict):
+            value = candidate.get("ch")
+        else:
+            value = getattr(candidate, "ch", None) if candidate is not None else None
+        if value is not None:
+            try:
+                channels = int(value)
+            except (TypeError, ValueError):
+                continue
+            if channels > 0:
+                return channels
+    return int(fallback)
+
 def _add_common_runtime(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--imgsz", type=int, default=640)
     parser.add_argument("--device", default="")
@@ -222,7 +246,9 @@ def main() -> None:
                 raise SystemExit("Dataset preflight failed; training was not started.")
         cache = False if args.cache == "none" else args.cache
         workers = 0 if args.exact_resume else args.workers
-        YOLO(args.model).train(
+        model = YOLO(args.model)
+        channels = _model_channels(model)
+        model.train(
             data=args.data,
             epochs=args.epochs,
             batch=args.batch,
@@ -230,7 +256,7 @@ def main() -> None:
             device=_device(args.device),
             workers=workers,
             cache=cache,
-            ch=6,
+            ch=channels,
             project=args.project,
             name=args.name,
             exist_ok=args.exist_ok,
@@ -253,12 +279,16 @@ def main() -> None:
 
     if args.command == "val":
         args.data = _resolve_data(args.data, args, "obb")
-        YOLO(args.weights, task="obb").val(data=args.data, split=args.split, batch=args.batch, imgsz=args.imgsz,
-                               device=_device(args.device), workers=args.workers, plots=args.plots, ch=6)
+        model = YOLO(args.weights, task="obb")
+        channels = _model_channels(model)
+        model.val(data=args.data, split=args.split, batch=args.batch, imgsz=args.imgsz,
+                  device=_device(args.device), workers=args.workers, plots=args.plots, ch=channels)
         return
 
     if args.command == "predict":
-        results = YOLO(args.weights, task="obb").predict(
+        model = YOLO(args.weights, task="obb")
+        channels = _model_channels(model)
+        results = model.predict(
             source=args.rgb,
             ir_source=args.ir,
             data=args.data or None,
@@ -272,7 +302,7 @@ def main() -> None:
             exist_ok=args.exist_ok,
             pair_resize=args.pair_resize,
             stream=args.stream,
-            ch=6,
+            ch=channels,
         )
         if args.stream:
             count = sum(1 for _ in results)
@@ -280,16 +310,19 @@ def main() -> None:
         return
 
     if args.command == "export":
-        output = YOLO(args.weights, task="obb").export(format=args.format, imgsz=args.imgsz, device=_device(args.device),
-                                           dynamic=args.dynamic, half=args.half, ch=6)
+        model = YOLO(args.weights, task="obb")
+        channels = _model_channels(model)
+        output = model.export(format=args.format, imgsz=args.imgsz, device=_device(args.device),
+                              dynamic=args.dynamic, half=args.half, ch=channels)
         print(output)
         return
 
+    model = YOLO(args.checkpoint)
     overrides = {
         "resume": args.checkpoint,
         "device": _device(args.device),
         "plots": args.plots,
-        "ch": 6,
+        "ch": _model_channels(model),
         "exact_resume": args.exact_resume,
         "deterministic": True,
     }
@@ -301,7 +334,7 @@ def main() -> None:
         overrides["cache"] = False if args.cache == "none" else args.cache
     if args.exact_resume:
         overrides["workers"] = 0
-    YOLO(args.checkpoint).train(**overrides)
+    model.train(**overrides)
 
 
 if __name__ == "__main__":

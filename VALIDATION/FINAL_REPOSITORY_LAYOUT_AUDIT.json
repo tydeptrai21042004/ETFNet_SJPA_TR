@@ -1,0 +1,183 @@
+{
+  "limit": 100,
+  "folders_checked": 44,
+  "violations": [],
+  "folders": [
+    {
+      "folder": "VALIDATION",
+      "recursive_files": 32
+    },
+    {
+      "folder": "kaggle",
+      "recursive_files": 2
+    },
+    {
+      "folder": "tests",
+      "recursive_files": 20
+    },
+    {
+      "folder": "tests/fixtures",
+      "recursive_files": 1
+    },
+    {
+      "folder": "tools",
+      "recursive_files": 6
+    },
+    {
+      "folder": "ultra_modeling",
+      "recursive_files": 62
+    },
+    {
+      "folder": "ultra_modeling/models",
+      "recursive_files": 52
+    },
+    {
+      "folder": "ultra_modeling/models/fastsam",
+      "recursive_files": 6
+    },
+    {
+      "folder": "ultra_modeling/models/nas",
+      "recursive_files": 4
+    },
+    {
+      "folder": "ultra_modeling/models/rtdetr",
+      "recursive_files": 5
+    },
+    {
+      "folder": "ultra_modeling/models/sam",
+      "recursive_files": 11
+    },
+    {
+      "folder": "ultra_modeling/models/sam/modules",
+      "recursive_files": 6
+    },
+    {
+      "folder": "ultra_modeling/models/utils",
+      "recursive_files": 3
+    },
+    {
+      "folder": "ultra_modeling/models/yolo",
+      "recursive_files": 22
+    },
+    {
+      "folder": "ultra_modeling/models/yolo/classify",
+      "recursive_files": 4
+    },
+    {
+      "folder": "ultra_modeling/models/yolo/detect",
+      "recursive_files": 4
+    },
+    {
+      "folder": "ultra_modeling/models/yolo/obb",
+      "recursive_files": 4
+    },
+    {
+      "folder": "ultra_modeling/models/yolo/pose",
+      "recursive_files": 4
+    },
+    {
+      "folder": "ultra_modeling/models/yolo/segment",
+      "recursive_files": 4
+    },
+    {
+      "folder": "ultra_modeling/nn",
+      "recursive_files": 10
+    },
+    {
+      "folder": "ultra_modeling/nn/modules",
+      "recursive_files": 7
+    },
+    {
+      "folder": "ultra_runtime",
+      "recursive_files": 35
+    },
+    {
+      "folder": "ultra_runtime/data",
+      "recursive_files": 23
+    },
+    {
+      "folder": "ultra_runtime/data/explorer",
+      "recursive_files": 5
+    },
+    {
+      "folder": "ultra_runtime/data/explorer/gui",
+      "recursive_files": 2
+    },
+    {
+      "folder": "ultra_runtime/data/scripts",
+      "recursive_files": 4
+    },
+    {
+      "folder": "ultra_runtime/engine",
+      "recursive_files": 8
+    },
+    {
+      "folder": "ultra_runtime/hub",
+      "recursive_files": 4
+    },
+    {
+      "folder": "ultra_services",
+      "recursive_files": 46
+    },
+    {
+      "folder": "ultra_services/solutions",
+      "recursive_files": 6
+    },
+    {
+      "folder": "ultra_services/trackers",
+      "recursive_files": 10
+    },
+    {
+      "folder": "ultra_services/trackers/utils",
+      "recursive_files": 4
+    },
+    {
+      "folder": "ultra_services/utils",
+      "recursive_files": 30
+    },
+    {
+      "folder": "ultra_services/utils/callbacks",
+      "recursive_files": 11
+    },
+    {
+      "folder": "ultralytics",
+      "recursive_files": 39
+    },
+    {
+      "folder": "ultralytics/cfg",
+      "recursive_files": 38
+    },
+    {
+      "folder": "ultralytics/cfg/datasets",
+      "recursive_files": 1
+    },
+    {
+      "folder": "ultralytics/cfg/models",
+      "recursive_files": 33
+    },
+    {
+      "folder": "ultralytics/cfg/models/etfnet",
+      "recursive_files": 12
+    },
+    {
+      "folder": "ultralytics/cfg/models/v3",
+      "recursive_files": 3
+    },
+    {
+      "folder": "ultralytics/cfg/models/v5",
+      "recursive_files": 2
+    },
+    {
+      "folder": "ultralytics/cfg/models/v6",
+      "recursive_files": 1
+    },
+    {
+      "folder": "ultralytics/cfg/models/v8",
+      "recursive_files": 14
+    },
+    {
+      "folder": "ultralytics/cfg/trackers",
+      "recursive_files": 2
+    }
+  ]
+}

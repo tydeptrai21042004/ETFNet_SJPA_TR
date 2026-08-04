@@ -75,3 +75,15 @@
 - Added 18 new multi-dataset tests; complete suite now reports 78 passing tests.
 - Added actual one-epoch end-to-end miniature runs for all five datasets and TorchScript coverage on M3FD.
 - Added optional `[data]` dependencies and the installed `etfnet` command.
+
+## 8.0.238+etfnetsjpa.7 — Kaggle/runtime hardening
+
+- Corrected official sparse VEDAI IDs and ignored `annotation512.txt` metadata.
+- Added deterministic `_co`/`_ir` pairing and nine-class schema validation.
+- Made GOCI/SJPA `eigh`, SVD and running statistics safe under outer AMP autocast.
+- Made W&B project names path-safe and isolated optional logger failures.
+- Added Ray Tune compatibility for old and new APIs without crashing ordinary training.
+- TensorBoard graph tracing now uses the actual 3- or 6-channel model input.
+- Added `tests/__init__.py` and regression tests for all Kaggle failures observed.
+- CLI train/validation/prediction/export now infer 3-channel RGB versus 6-channel RGB–IR input from each model instead of forcing six channels.
+- Final corrected validation: 87 pytest cases, all 12 shipped YAML build/forward checks, ten logical baseline/proposal one-epoch synthetic trainings, pipeline train/val/predict/TorchScript checks, optional W&B/Ray failure simulation, wheel build/install, and repository layout audit.
