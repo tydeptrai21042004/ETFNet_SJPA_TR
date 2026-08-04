@@ -1,6 +1,7 @@
 # Ultralytics YOLO 🚀, AGPL-3.0 license
 """Block modules."""
 
+import contextlib
 import math
 import torch
 import torch.nn as nn
@@ -1784,36 +1785,42 @@ class GOCI(nn.Module):
         cross = rc.transpose(-1, -2) @ ic / n
         return mu_r, mu_i, cov_r, cov_i, cross
 
+    @staticmethod
+    def _autocast_disabled(device: torch.device):
+        # CUDA autocast can cast FP32 matrix products back to FP16 before SVD.
+        # Explicitly disabling autocast around the full linear-algebra block keeps
+        # eigh/SVD and their input products in FP32 on every supported backend.
+        if device.type in {'cpu', 'cuda', 'xpu'}:
+            return torch.autocast(device_type=device.type, enabled=False)
+        return contextlib.nullcontext()
+
     @torch.no_grad()
     def _update_running(self, stats):
-        mu_r, mu_i, cov_r, cov_i, cross = stats
+        buffers = (self.running_mu_r, self.running_mu_i, self.running_cov_r,
+                   self.running_cov_i, self.running_cross)
+        safe_stats = tuple(value.detach().to(device=buffer.device, dtype=buffer.dtype)
+                           for value, buffer in zip(stats, buffers))
         if int(self.num_updates.item()) == 0:
-            self.running_mu_r.copy_(mu_r)
-            self.running_mu_i.copy_(mu_i)
-            self.running_cov_r.copy_(cov_r)
-            self.running_cov_i.copy_(cov_i)
-            self.running_cross.copy_(cross)
+            for buffer, value in zip(buffers, safe_stats):
+                buffer.copy_(value)
         else:
-            m = self.momentum
-            self.running_mu_r.lerp_(mu_r, m)
-            self.running_mu_i.lerp_(mu_i, m)
-            self.running_cov_r.lerp_(cov_r, m)
-            self.running_cov_i.lerp_(cov_i, m)
-            self.running_cross.lerp_(cross, m)
+            for buffer, value in zip(buffers, safe_stats):
+                buffer.lerp_(value, self.momentum)
         self.num_updates.add_(1)
 
     def _transforms(self, mu_r, mu_i, cov_r, cov_i, cross):
         d = self.group_width
-        # Solve in FP32 for numerical stability under AMP, then cast at use time.
-        cov_r, cov_i, cross = cov_r.float(), cov_i.float(), cross.float()
-        eye = torch.eye(d, device=cov_r.device, dtype=cov_r.dtype).expand(self.groups, -1, -1)
-        er, vr = torch.linalg.eigh(cov_r + self.eps * eye)
-        ei, vi = torch.linalg.eigh(cov_i + self.eps * eye)
-        wr = vr @ torch.diag_embed(er.clamp_min(self.eps).rsqrt()) @ vr.transpose(-1, -2)
-        wi = vi @ torch.diag_embed(ei.clamp_min(self.eps).rsqrt()) @ vi.transpose(-1, -2)
-        u, _, vh = torch.linalg.svd(wr @ cross @ wi, full_matrices=False)
-        q = u @ vh
-        return mu_r.float(), mu_i.float(), wr, wi, q
+        with self._autocast_disabled(cov_r.device):
+            mu_r, mu_i = mu_r.float(), mu_i.float()
+            cov_r, cov_i, cross = cov_r.float(), cov_i.float(), cross.float()
+            eye = torch.eye(d, device=cov_r.device, dtype=torch.float32).expand(self.groups, -1, -1)
+            er, vr = torch.linalg.eigh(cov_r + self.eps * eye)
+            ei, vi = torch.linalg.eigh(cov_i + self.eps * eye)
+            wr = vr @ torch.diag_embed(er.clamp_min(self.eps).rsqrt()) @ vr.transpose(-1, -2)
+            wi = vi @ torch.diag_embed(ei.clamp_min(self.eps).rsqrt()) @ vi.transpose(-1, -2)
+            u, _, vh = torch.linalg.svd(wr @ cross @ wi, full_matrices=False)
+            q = u @ vh
+        return mu_r, mu_i, wr, wi, q
 
     @torch.no_grad()
     def prepare_for_export(self):
@@ -1932,13 +1939,14 @@ class SJPA(GOCI):
 
     def _score_cross(self, cross):
         # Shift selection is discrete, so gradients through the score cannot
-        # influence the chosen branch.  Detaching avoids retaining an SVD graph
-        # for every candidate while gradients still flow through the selected
-        # full-resolution feature map.
-        cross = cross.detach().float()
-        if self.export_mode or torch.onnx.is_in_onnx_export():
-            return cross.square().sum(dim=(-2, -1)).clamp_min(0).sqrt().sum(-1)
-        return torch.linalg.svdvals(cross).sum((-1, -2))
+        # influence the chosen branch. Detaching avoids retaining one SVD graph
+        # per candidate. The matrix product can still be autocast by an outer
+        # AMP context, therefore both conversion and SVD run with autocast off.
+        with self._autocast_disabled(cross.device):
+            cross = cross.detach().float()
+            if self.export_mode or torch.onnx.is_in_onnx_export():
+                return cross.square().sum(dim=(-2, -1)).clamp_min(0).sqrt().sum(-1)
+            return torch.linalg.svdvals(cross).sum((-1, -2))
 
     @staticmethod
     def _shift_no_wrap(x, dy: int, dx: int):
