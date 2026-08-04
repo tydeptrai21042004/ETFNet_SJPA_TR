@@ -64,6 +64,22 @@ CVC_MODELSCOPE_ID = "OmniData/CVC-14"
 VEDAI_BASE = "https://downloads.greyc.fr/vedai"
 
 
+VEDAI_CLASS_NAMES = ("plane", "boat", "camping-car", "car", "pickup",
+                     "tractor", "truck", "van", "other")
+VEDAI_OFFICIAL_ID_TO_CLASS = {
+    31: 0,              # plane
+    6: 1, 23: 1,       # boat variants
+    5: 2,               # camping-car
+    1: 3,               # car
+    11: 4,              # pickup
+    4: 5,               # tractor
+    2: 6,               # truck
+    9: 7,               # van
+    7: 8, 8: 8, 10: 8, 12: 8,  # other variants
+}
+VEDAI_SPARSE_MARKERS = frozenset({10, 11, 12, 23, 31})
+
+
 ADDITIONAL_DATASETS: dict[str, PublicDatasetSpec] = {
     "m3fd": PublicDatasetSpec(
         key="m3fd",
@@ -95,7 +111,7 @@ ADDITIONAL_DATASETS: dict[str, PublicDatasetSpec] = {
         expected_download_gb=1.3,
         variants=("512", "1024"),
         default_variant="512",
-        classes=("plane", "boat", "camping-car", "car", "pickup", "tractor", "truck", "van", "other"),
+        classes=VEDAI_CLASS_NAMES,
     ),
     "flir-aligned": PublicDatasetSpec(
         key="flir-aligned",
@@ -643,29 +659,75 @@ def _prepare_m3fd(raw: Path, spec: PublicDatasetSpec, val_fraction: float, seed:
     return samples
 
 
-def _parse_vedai_labels(path: Path, width: int, height: int, class_count: int) -> tuple[ObjectLabel, ...]:
+def _vedai_annotation_files(annotation_dir: Path) -> list[Path]:
+    """Return only per-image VEDAI annotation files, excluding annotation512.txt metadata."""
+    return [path for path in sorted(annotation_dir.glob('*.txt')) if re.fullmatch(r'\d+', path.stem)]
+
+
+def _vedai_raw_ids(annotation_files: Sequence[Path]) -> set[int]:
+    ids: set[int] = set()
+    for path in annotation_files:
+        for number, raw in enumerate(path.read_text(encoding='utf-8-sig', errors='replace').splitlines(), 1):
+            if not raw.strip():
+                continue
+            fields = raw.split()
+            if len(fields) != 14:
+                raise DatasetPreparationError(f'VEDAI expects 14 fields at {path}:{number}, got {len(fields)}')
+            try:
+                ids.add(int(float(fields[3])))
+            except ValueError as exc:
+                raise DatasetPreparationError(f'Invalid VEDAI class id at {path}:{number}: {fields[3]!r}') from exc
+    return ids
+
+
+def _vedai_class_mapping(annotation_dir: Path, annotation_files: Sequence[Path], class_count: int) -> dict[int, int]:
+    """Detect official sparse IDs while retaining compatibility with contiguous converted fixtures."""
+    raw_ids = _vedai_raw_ids(annotation_files)
+    metadata_present = any(path.name.lower() == f'annotation{annotation_dir.name[-3:]}.txt'.lower()
+                           for path in annotation_dir.glob('*.txt'))
+    official = metadata_present or bool(raw_ids & VEDAI_SPARSE_MARKERS)
+    if official:
+        unknown = raw_ids.difference(VEDAI_OFFICIAL_ID_TO_CLASS)
+        if unknown:
+            raise DatasetPreparationError(f'Unknown official VEDAI class ids: {sorted(unknown)}')
+        return dict(VEDAI_OFFICIAL_ID_TO_CLASS)
+    if raw_ids and all(1 <= value <= class_count for value in raw_ids):
+        return {value: value - 1 for value in range(1, class_count + 1)}
+    unknown = raw_ids.difference(VEDAI_OFFICIAL_ID_TO_CLASS)
+    if unknown:
+        raise DatasetPreparationError(f'Unknown VEDAI class ids: {sorted(unknown)}')
+    return dict(VEDAI_OFFICIAL_ID_TO_CLASS)
+
+
+def _parse_vedai_labels(path: Path, width: int, height: int, class_count: int,
+                        class_mapping: dict[int, int] | None = None) -> tuple[ObjectLabel, ...]:
     labels: list[ObjectLabel] = []
     if not path.is_file():
         return ()
-    for number, raw in enumerate(path.read_text(encoding="utf-8-sig", errors="replace").splitlines(), 1):
+    mapping = class_mapping or {value: value - 1 for value in range(1, class_count + 1)}
+    for number, raw in enumerate(path.read_text(encoding='utf-8-sig', errors='replace').splitlines(), 1):
         if not raw.strip():
             continue
         fields = raw.split()
         if len(fields) != 14:
-            raise DatasetPreparationError(f"VEDAI expects 14 fields at {path}:{number}, got {len(fields)}")
-        values = [float(v) for v in fields]
+            raise DatasetPreparationError(f'VEDAI expects 14 fields at {path}:{number}, got {len(fields)}')
+        values = [float(value) for value in fields]
         raw_class = int(values[3])
-        cls = raw_class - 1 if 1 <= raw_class <= class_count else raw_class
+        if raw_class not in mapping:
+            raise DatasetPreparationError(f'Unknown VEDAI class id {raw_class} at {path}:{number}')
+        cls = mapping[raw_class]
         if cls < 0 or cls >= class_count:
-            raise DatasetPreparationError(f"Unknown VEDAI class id {raw_class} at {path}:{number}")
+            raise DatasetPreparationError(
+                f'VEDAI class id {raw_class} maps outside the configured class range at {path}:{number}')
         # Official records place x1..x4 first, followed by y1..y4.
         xs, ys = values[6:10], values[10:14]
         points = tuple(zip(xs, ys))
         if _polygon_area(points) < 1.0:
-            # Some third-party conversions interleave x/y; accept it only when the official interpretation is invalid.
-            alternate = tuple((values[i], values[i + 1]) for i in range(6, 14, 2))
+            alternate = tuple((values[index], values[index + 1]) for index in range(6, 14, 2))
             if _polygon_area(alternate) > _polygon_area(points):
                 points = alternate
+        if _polygon_area(points) < 1.0:
+            continue
         labels.append(ObjectLabel(cls, tuple((float(x), float(y)) for x, y in points)))
     return tuple(labels)
 
@@ -674,9 +736,10 @@ def _split_multiband_vedai(image: Path, cache_root: Path) -> tuple[Path, Path] |
     data = cv2.imread(str(image), cv2.IMREAD_UNCHANGED)
     if data is None or data.ndim != 3 or data.shape[2] < 4:
         return None
-    rgb_path = cache_root / "rgb" / f"{image.stem}.png"
-    ir_path = cache_root / "ir" / f"{image.stem}.png"
-    rgb_path.parent.mkdir(parents=True, exist_ok=True); ir_path.parent.mkdir(parents=True, exist_ok=True)
+    rgb_path = cache_root / 'rgb' / f'{image.stem}.png'
+    ir_path = cache_root / 'ir' / f'{image.stem}.png'
+    rgb_path.parent.mkdir(parents=True, exist_ok=True)
+    ir_path.parent.mkdir(parents=True, exist_ok=True)
     if not rgb_path.is_file():
         cv2.imwrite(str(rgb_path), data[:, :, :3])
     if not ir_path.is_file():
@@ -685,43 +748,70 @@ def _split_multiband_vedai(image: Path, cache_root: Path) -> tuple[Path, Path] |
     return rgb_path, ir_path
 
 
-def _prepare_vedai(raw: Path, spec: PublicDatasetSpec, variant: str, val_fraction: float, seed: int) -> list[PairSample]:
-    ann_dirs = [p for p in raw.rglob("*") if p.is_dir() and p.name.lower() == f"annotations{variant}".lower()]
-    if not ann_dirs:
-        ann_dirs = [p for p in raw.rglob("*") if p.is_dir() and "annotation" in p.name.lower()]
-    if not ann_dirs:
-        raise DatasetPreparationError(f"VEDAI annotations{variant}/ directory not found.")
-    ann_dir = min(ann_dirs, key=lambda p: len(p.parts))
-    images = [p for p in _image_files(raw) if "annotation" not in p.as_posix().lower()]
+def _prepare_vedai(raw: Path, spec: PublicDatasetSpec, variant: str, val_fraction: float,
+                   seed: int) -> list[PairSample]:
+    annotation_dirs = [path for path in raw.rglob('*')
+                       if path.is_dir() and path.name.lower() == f'annotations{variant}'.lower()]
+    if not annotation_dirs:
+        annotation_dirs = [path for path in raw.rglob('*')
+                           if path.is_dir() and 'annotation' in path.name.lower()]
+    if not annotation_dirs:
+        raise DatasetPreparationError(f'VEDAI annotations{variant}/ directory not found.')
+    annotation_dir = min(annotation_dirs, key=lambda path: len(path.parts))
+    annotations = _vedai_annotation_files(annotation_dir)
+    if not annotations:
+        raise DatasetPreparationError(f'No numeric per-image VEDAI annotations found in {annotation_dir}')
+    class_mapping = _vedai_class_mapping(annotation_dir, annotations, len(spec.classes))
+
+    images = [path for path in _image_files(raw) if 'annotation' not in path.as_posix().lower()]
     by_stem: dict[str, list[Path]] = defaultdict(list)
     for image in images:
         by_stem[_normal_stem(image)].append(image)
-    split_cache = raw / "_vedai_split_modalities"
+    split_cache = raw / '_vedai_split_modalities'
     samples: list[PairSample] = []
-    for ann in sorted(ann_dir.glob("*.txt")):
-        candidates = by_stem.get(ann.stem.lower(), [])
-        rgb: Path | None = None; ir: Path | None = None
+    unmatched: list[str] = []
+
+    def rgb_rank(path: Path):
+        stem = path.stem.lower()
+        return (5 if re.search(r'(?:^|[_-])co$', stem) else 0,
+                _modality_score(path, 'rgb'), -len(path.as_posix()))
+
+    def ir_rank(path: Path):
+        stem = path.stem.lower()
+        return (5 if re.search(r'(?:^|[_-])(?:ir|nir)$', stem) else 0,
+                _modality_score(path, 'ir'), -len(path.as_posix()))
+
+    for annotation in annotations:
+        candidates = by_stem.get(annotation.stem.lower(), [])
+        rgb: Path | None = None
+        ir: Path | None = None
         if len(candidates) >= 2:
-            rgb = max(candidates, key=lambda p: _modality_score(p, "rgb"))
-            ir = max(candidates, key=lambda p: _modality_score(p, "ir"))
+            rgb = max(candidates, key=rgb_rank)
+            ir = max(candidates, key=ir_rank)
             if rgb == ir:
                 rgb = ir = None
-        if rgb is None and candidates:
+        if (rgb is None or ir is None) and len(candidates) == 1:
             split = _split_multiband_vedai(candidates[0], split_cache)
             if split:
                 rgb, ir = split
         if rgb is None or ir is None:
-            # Some releases have one color image only. VEDAI's extra spectral band may be embedded; refuse silent duplication.
-            raise DatasetPreparationError(
-                f"Could not find distinct RGB/NIR data for VEDAI sample {ann.stem}. "
-                "Supply the official multispectral archive, not a color-only derivative."
-            )
+            unmatched.append(annotation.stem)
+            continue
         width, height = _read_image_size(rgb)
-        labels = _parse_vedai_labels(ann, width, height, len(spec.classes))
-        split_name = _split_hint(rgb) or _deterministic_split(ann.stem, val_fraction, seed)
-        if split_name == "test":
-            split_name = "val"  # labels are available; keep a train/val setup for the project
-        samples.append(PairSample(ann.stem, rgb, ir, labels, split_name))
+        ir_width, ir_height = _read_image_size(ir)
+        if (width, height) != (ir_width, ir_height):
+            raise DatasetPreparationError(
+                f'VEDAI pair-size mismatch for {annotation.stem}: RGB={(width, height)}, IR={(ir_width, ir_height)}')
+        labels = _parse_vedai_labels(annotation, width, height, len(spec.classes), class_mapping)
+        split_name = _split_hint(rgb) or _deterministic_split(annotation.stem, val_fraction, seed)
+        if split_name == 'test':
+            split_name = 'val'
+        samples.append(PairSample(annotation.stem, rgb, ir, labels, split_name))
+    if unmatched:
+        preview = ', '.join(unmatched[:10])
+        raise DatasetPreparationError(
+            f'{len(unmatched)} VEDAI annotations have no distinct RGB/NIR pair: {preview}. '
+            'Supply the official multispectral archive, not a color-only derivative.')
     return samples
 
 
