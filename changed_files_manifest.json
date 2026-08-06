@@ -1,0 +1,106 @@
+{
+  "compared_against": "ETFNet_SJPA_TR-main (1).zip",
+  "added": [
+    {
+      "path": "CORRECTED_PROPOSAL_ANALYSIS.md",
+      "sha256_updated": "4491039ddf69fd8bf5b8bb4e0d7a66c3f61f6cf7fde3604f94d1ee57151fe718"
+    },
+    {
+      "path": "DCSPF_MATHEMATICAL_APPENDIX.md",
+      "sha256_updated": "ccb70ec9a556de749db06a99a69326a6535054e227b1476b5f21a556755b7250"
+    },
+    {
+      "path": "RECHECK_V9_REPORT.md",
+      "sha256_updated": "d6180b256b07f802c8ac0b562f5bbd54235d42ef41ddec3379d81d6f8e84848b"
+    },
+    {
+      "path": "VALIDATION/recheck_v9/benchmark_dcspf_fair_proxy.py",
+      "sha256_updated": "0a58b1d1a65530a2cadf481f6ae831e2dd9169557b6a7570695a8a1dee0fdd22"
+    },
+    {
+      "path": "VALIDATION/recheck_v9/dcspf_threshold_ablation_5seed.json",
+      "sha256_updated": "cdccc408327ac4fab5079b594eb60b10eeaa377867bc5bc1ae3f8b3becaeb514"
+    },
+    {
+      "path": "VALIDATION/recheck_v9/fair_component_seeded_5seed.json",
+      "sha256_updated": "73fec726a808ed5ed71f1cbf6a966c7d9c66d7faf8b828a88804a64bef6b5350"
+    },
+    {
+      "path": "VALIDATION/recheck_v9/model_parameter_audit.json",
+      "sha256_updated": "9aa938633f444dd2727171a554b3c8a6e01f2efb86460d36ed73d1d5fea44ffa"
+    },
+    {
+      "path": "VALIDATION/recheck_v9/original_rng_stream_proxy_5seed_10epoch.json",
+      "sha256_updated": "c1eadba3af1701e04382f793571490a206098b223c6e1190d750a0ff183df45e"
+    },
+    {
+      "path": "VALIDATION/sjpa_corrected_proxy_5seed_10epoch.json",
+      "sha256_updated": "c1eadba3af1701e04382f793571490a206098b223c6e1190d750a0ff183df45e"
+    },
+    {
+      "path": "VALIDATION/statistical_domain_diagnostics.json",
+      "sha256_updated": "5da4e89015e6c2182b2eb6243154d79bbb77d1be8126146759a30bfa1754f600"
+    },
+    {
+      "path": "tests/test_candidate_certificate.py",
+      "sha256_updated": "9ef12bcbcff393c511de6f65b96250de436d3cb54a91f7ecece78978f87818c8"
+    },
+    {
+      "path": "tests/test_dcspf_guard.py",
+      "sha256_updated": "6eb920b84cf5ec82fc88c14f04d2b4c22857ce270fb24d04f4dfaaf518739f9f"
+    },
+    {
+      "path": "tests/test_rtpf_corrected.py",
+      "sha256_updated": "a7d341fec9b70b70e0e193bfc0a6ae016372710e810cc053b39fd292b720c7e8"
+    },
+    {
+      "path": "tools/certify_candidate.py",
+      "sha256_updated": "1ade535e8b4144d5ef0c58083e7414110caeca03ac9d3b8a193bb377a2e6c287"
+    },
+    {
+      "path": "ultralytics/cfg/models/etfnet/etfnet_P2_C3k2_DCSPF_Guard.yaml",
+      "sha256_updated": "33e39265f930dd09fb2ae3e3d84345f59c38f5c52e8b089b84ea6ecdc42eb0bb"
+    },
+    {
+      "path": "ultralytics/cfg/models/etfnet/etfnet_P2_C3k2_RTPF.yaml",
+      "sha256_updated": "33f934534dbd173b72163fac9d843683311ba7439455627194907da760b25eaa"
+    },
+    {
+      "path": "ultralytics/cfg/models/etfnet/etfnet_P2_C3k2_SJPA_TR_Corrected.yaml",
+      "sha256_updated": "4677c7f6bcff2d65141db5338dce273a7451dfe368665f024e8099e1effa7750"
+    }
+  ],
+  "modified": [
+    {
+      "path": "CHANGELOG_FIXES.md",
+      "sha256_updated": "c73b3351461e7b20360500486d4de137dfc2e0d13ea0e27153735dfb4bf28f0e",
+      "sha256_original": "3e2ead59d82517d931324f9089e312792ecd936fbfc97f3ce590c705c912b7bd"
+    },
+    {
+      "path": "README.md",
+      "sha256_updated": "67db8c939eedef23fec6b5537d5ab63ec90d9a3111a72f3f147bc1521b491a43",
+      "sha256_original": "33801f7a27602dace25e088503c7193b977dfc8008adfa70ed7374e941d2de67"
+    },
+    {
+      "path": "kaggle/ETFNet_SJPA_TR_Corrected_Kaggle_VEDAI10_All_Baselines.py",
+      "sha256_updated": "fcf7e35052cdd71d1fbc5f3088e6c6162f8f7082765e851e9f3deb0455bb7247",
+      "sha256_original": "819a6562e04df63ffdcf66a8978ef387e5289597d12e1d359f1f204a37b83c2e"
+    },
+    {
+      "path": "ultra_modeling/nn/modules/__init__.py",
+      "sha256_updated": "0ae622635ee6fc2e84638e7e8df28e3bc93f1d22e68572e9b0902bff651400ec",
+      "sha256_original": "4a645f048f4b20789a4e1f4b550192061621f83a088443030858e83a58319e1e"
+    },
+    {
+      "path": "ultra_modeling/nn/modules/block.py",
+      "sha256_updated": "6d05356240239b6c16616a41ab92d2e3814a7c52c8365d2ebfc40c7c667b7143",
+      "sha256_original": "5b3ba44766befc64f540f8f1e415c02bae625122bdeaa0e76082464c4eba12ab"
+    },
+    {
+      "path": "ultra_modeling/nn/tasks.py",
+      "sha256_updated": "e9c2f0b89b052d186ba0aa4e4bd1c4d7ca79287f05bfecb5fba0da6f1aa7b3cd",
+      "sha256_original": "70a60d58c2fef94fb2b54158c799baac0e7da1a1c3e8180023a26c12dd8ae5a4"
+    }
+  ],
+  "deleted": []
+}

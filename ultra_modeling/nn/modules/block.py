@@ -15,7 +15,7 @@ from .transformer import TransformerBlock
 from ultralytics.utils.torch_utils import fuse_conv_and_bn
 
 __all__ = ('DFL', 'HGBlock', 'HGStem', 'SPP', 'SPPF', 'C1', 'C2', 'C3', 'C2f', 'C3x', 'C3TR', 'C3Ghost', 'C2fCIB', 'SCDown', 'PSA', 'C3k2', 'CAFEM', 'C2PSA',
-           'GhostBottleneck', 'Bottleneck', 'BottleneckCSP', 'Proto', 'RepC3', 'ResNetLayer', 'IN', 'Multiin', 'MF', 'Add', 'Add2', 'A2C2f', 'TGF', 'GOCI', 'SJPA')
+           'GhostBottleneck', 'Bottleneck', 'BottleneckCSP', 'Proto', 'RepC3', 'ResNetLayer', 'IN', 'Multiin', 'MF', 'Add', 'Add2', 'A2C2f', 'TGF', 'GOCI', 'SJPA', 'RTPF', 'DCSPF')
 
 
 class SE_Block(nn.Module):
@@ -1939,8 +1939,14 @@ class GOCI(nn.Module):
         probabilities lie on the two-simplex and are invariant to orthogonal
         channel rotations because they depend only on squared feature norms.
         """
-        energy_r = a.float().square().mean((1, 2, 3), keepdim=True)
-        energy_i = b.float().square().mean((1, 2, 3), keepdim=True)
+        # The whitening transform is estimated on the anchor grid. Reliability
+        # must therefore be measured on the same statistical domain; measuring
+        # it on the unpooled map systematically inflates energy whenever the
+        # anchor grid averages multiple feature cells.
+        a_stat = self.pool(a.float())
+        b_stat = self.pool(b.float())
+        energy_r = a_stat.square().mean((1, 2, 3), keepdim=True)
+        energy_i = b_stat.square().mean((1, 2, 3), keepdim=True)
         dev_r = torch.log(energy_r + 1e-4).abs()
         dev_i = torch.log(energy_i + 1e-4).abs()
         probability = torch.cat((-self.reliability_gamma * dev_r,
@@ -1987,7 +1993,7 @@ class SJPA(GOCI):
                  reliability: bool = True, reliability_gamma: float = 1.5,
                  trigger_tau: float = 0.6, trigger_k: float = 12.0,
                  max_shift: int = 1, shift_penalty: float = 0.1,
-                 score_threshold: float = 0.3):
+                 score_threshold: float = 0.3, shift_margin: float = 0.0):
         super().__init__(channels, groups, anchors, momentum, eps, reliability,
                          reliability_gamma, trigger_tau, trigger_k)
         if max_shift < 0:
@@ -1995,6 +2001,9 @@ class SJPA(GOCI):
         self.max_shift = int(max_shift)
         self.shift_penalty = float(shift_penalty)
         self.score_threshold = float(score_threshold)
+        self.shift_margin = float(shift_margin)
+        if self.shift_margin < 0:
+            raise ValueError('shift_margin must be non-negative')
 
     def _score_cross(self, cross):
         # Shift selection is discrete, so gradients through the score cannot
@@ -2040,13 +2049,18 @@ class SJPA(GOCI):
             bt = bp.reshape(bs, self.groups, self.group_width, -1).permute(0, 1, 3, 2)
             bt = bt - bt.mean(-2, keepdim=True)
             cross = at.transpose(-1, -2) @ bt / n
-            score = self._score_cross(cross) - self.shift_penalty * float(dy * dy + dx * dx)
+            score = (
+                self._score_cross(cross) / (self.groups * self.group_width)
+                - self.shift_penalty * float(dy * dy + dx * dx)
+            )
             scores.append(score)
             shifted.append(candidate)
         score_matrix = torch.stack(scores, dim=1)
-        selected = score_matrix.argmax(1)
+        best_score, selected = score_matrix.max(1)
         zero_index = shifts.index((0, 0))
-        selected = torch.where(eligible, selected, torch.full_like(selected, zero_index))
+        improvement = best_score - score_matrix[:, zero_index]
+        accept_shift = eligible & (improvement > self.shift_margin)
+        selected = torch.where(accept_shift, selected, torch.full_like(selected, zero_index))
         stack = torch.stack(shifted, dim=1)  # B, S, C, H, W
         gather_index = selected.view(bs, 1, 1, 1, 1).expand(-1, 1, b.shape[1], b.shape[2], b.shape[3])
         output = stack.gather(1, gather_index).squeeze(1)
@@ -2057,7 +2071,9 @@ class SJPA(GOCI):
             'selected_index': selected,
             'selected_shift': shift_tensor[selected],
             'eligible': eligible,
+            'accept_shift': accept_shift,
             'zero_score': zero_score,
+            'improvement': improvement,
             'score_matrix': score_matrix,
         }
 
@@ -2093,3 +2109,245 @@ class SJPA(GOCI):
         anomaly = torch.maximum(dev_r, dev_i)
         b = self._select_shift(a, b, anomaly.flatten() < self.trigger_tau)
         return self._reliability_output(a, b)
+
+
+class RTPF(SJPA):
+    """Residual Trust-region Procrustes Fusion.
+
+    RTPF preserves the direct RGB--IR concatenation path and injects the
+    canonical SJPA representation only through a norm-projected residual.  The
+    scalar residual step is initialized at zero, so the module is exactly equal
+    to direct concatenation at initialization.  For every sample ``j`` the
+    correction obeys
+
+        ||RTPF_j - concat_j||_F <= trust_radius * ||concat_j||_F.
+
+    A deterministic fallback gate suppresses the canonical correction when both
+    modalities are statistically atypical in the same pooled whitening domain.
+    """
+
+    def __init__(self, channels: int, groups: int = 32, anchors: int = 8,
+                 momentum: float = 0.03, eps: float = 1e-3,
+                 reliability: bool = True, reliability_gamma: float = 1.5,
+                 trigger_tau: float = 0.6, trigger_k: float = 12.0,
+                 max_shift: int = 1, shift_penalty: float = 0.1,
+                 score_threshold: float = 0.3, shift_margin: float = 0.02,
+                 trust_radius: float = 1.0, fallback_tau: float = 1.0,
+                 fallback_k: float = 8.0):
+        super().__init__(channels, groups, anchors, momentum, eps, reliability,
+                         reliability_gamma, trigger_tau, trigger_k, max_shift,
+                         shift_penalty, score_threshold, shift_margin)
+        if trust_radius <= 0:
+            raise ValueError('trust_radius must be positive')
+        if fallback_k <= 0:
+            raise ValueError('fallback_k must be positive')
+        self.trust_radius = float(trust_radius)
+        self.fallback_tau = float(fallback_tau)
+        self.fallback_k = float(fallback_k)
+        # softsign(step_parameter) is exactly zero at initialization, bounded in
+        # (-1, 1), and has derivative one at zero.
+        self.step_parameter = nn.Parameter(torch.zeros(()))
+
+    @staticmethod
+    def _sample_frobenius(x: torch.Tensor) -> torch.Tensor:
+        return x.float().flatten(1).norm(dim=1).view(-1, 1, 1, 1)
+
+    def _trust_project(self, raw: torch.Tensor, candidate: torch.Tensor):
+        correction = candidate - raw
+        raw_norm = self._sample_frobenius(raw)
+        correction_norm = self._sample_frobenius(correction)
+        radius = self.trust_radius * raw_norm
+        scale = torch.minimum(
+            torch.ones_like(correction_norm),
+            radius / (correction_norm + self.eps),
+        ).to(correction.dtype)
+        return correction * scale, correction_norm, radius
+
+    def forward_with_diagnostics(self, x):
+        raw = torch.cat((x[0], x[1]), dim=1)
+        a, b = self._align(x[0], x[1])
+        _, _, energy_r_pre, energy_i_pre = self._reliability_terms(a, b)
+        dev_r_pre = torch.log(energy_r_pre + 1e-4).abs()
+        dev_i_pre = torch.log(energy_i_pre + 1e-4).abs()
+        anomaly = torch.maximum(dev_r_pre, dev_i_pre)
+        b, shift = self._select_shift(
+            a, b, anomaly.flatten() < self.trigger_tau, return_diagnostics=True
+        )
+        candidate = self._reliability_output(a, b)
+        probability, trigger, energy_r, energy_i = self._reliability_terms(a, b)
+        dev_r = torch.log(energy_r + 1e-4).abs()
+        dev_i = torch.log(energy_i + 1e-4).abs()
+        # At least one plausible stream is enough to permit the canonical branch;
+        # simultaneous atypicality causes a smooth fallback to raw concatenation.
+        fallback_gate = torch.sigmoid(
+            self.fallback_k * (self.fallback_tau - torch.minimum(dev_r, dev_i))
+        ).to(raw.dtype)
+        correction, correction_norm, radius = self._trust_project(raw, candidate)
+        step = self.step_parameter / (1.0 + self.step_parameter.abs())
+        output = raw + step.to(raw.dtype) * fallback_gate * correction
+        diagnostics = {
+            **shift,
+            'probability': probability,
+            'trigger': trigger,
+            'energy_r': energy_r,
+            'energy_i': energy_i,
+            'fallback_gate': fallback_gate,
+            'step': step.detach(),
+            'correction_norm': correction_norm,
+            'trust_radius_norm': radius,
+            'raw': raw,
+            'candidate': candidate,
+        }
+        return output, diagnostics
+
+    def forward(self, x):
+        raw = torch.cat((x[0], x[1]), dim=1)
+        a, b = self._align(x[0], x[1])
+        _, _, energy_r, energy_i = self._reliability_terms(a, b)
+        dev_r = torch.log(energy_r + 1e-4).abs()
+        dev_i = torch.log(energy_i + 1e-4).abs()
+        anomaly = torch.maximum(dev_r, dev_i)
+        b = self._select_shift(a, b, anomaly.flatten() < self.trigger_tau)
+        candidate = self._reliability_output(a, b)
+        _, _, energy_r, energy_i = self._reliability_terms(a, b)
+        dev_r = torch.log(energy_r + 1e-4).abs()
+        dev_i = torch.log(energy_i + 1e-4).abs()
+        fallback_gate = torch.sigmoid(
+            self.fallback_k * (self.fallback_tau - torch.minimum(dev_r, dev_i))
+        ).to(raw.dtype)
+        correction, _, _ = self._trust_project(raw, candidate)
+        step = self.step_parameter / (1.0 + self.step_parameter.abs())
+        return raw + step.to(raw.dtype) * fallback_gate * correction
+
+
+class DCSPF(SJPA):
+    """Dual-Coordinate Safe Procrustes Fusion with a reliability--coherence guard.
+
+    DCSPF retains two coordinate experts:
+
+    1. the raw RGB--IR concatenation, and
+    2. the statistically canonicalized SJPA representation.
+
+    A deterministic sample-level guard selects the canonical expert when either
+    the pair is jointly coherent and statistically typical, or one modality has
+    a clear reliability advantage. Otherwise, the module uses the raw expert.
+    Each expert has an identity-initialized grouped 1x1 adapter, so the module is
+    exactly branch preserving at initialization while allowing the detector loss
+    to calibrate the two coordinate systems independently.
+    """
+
+    def __init__(self, channels: int, groups: int = 32, anchors: int = 8,
+                 momentum: float = 0.03, eps: float = 1e-3,
+                 reliability: bool = True, reliability_gamma: float = 1.5,
+                 trigger_tau: float = 0.6, trigger_k: float = 12.0,
+                 max_shift: int = 1, shift_penalty: float = 0.1,
+                 score_threshold: float = 0.3, shift_margin: float = 0.02,
+                 coherence_tau: float = 0.35, typicality_tau: float = 0.6,
+                 dominance_tau: float = 0.8):
+        super().__init__(channels, groups, anchors, momentum, eps, reliability,
+                         reliability_gamma, trigger_tau, trigger_k, max_shift,
+                         shift_penalty, score_threshold, shift_margin)
+        if not 0.0 <= coherence_tau <= 1.0:
+            raise ValueError('coherence_tau must lie in [0, 1]')
+        if typicality_tau < 0.0:
+            raise ValueError('typicality_tau must be non-negative')
+        if not 0.0 <= dominance_tau <= 1.0:
+            raise ValueError('dominance_tau must lie in [0, 1]')
+        self.coherence_tau = float(coherence_tau)
+        self.typicality_tau = float(typicality_tau)
+        self.dominance_tau = float(dominance_tau)
+        fused_channels = 2 * self.channels
+        # groups=2 prevents the adapter from mixing RGB and IR halves before the
+        # detector's normal post-fusion convolution. Both adapters are exact
+        # identities at initialization.
+        self.raw_adapter = nn.Conv2d(fused_channels, fused_channels, 1, groups=2, bias=True)
+        self.canonical_adapter = nn.Conv2d(fused_channels, fused_channels, 1, groups=2, bias=True)
+        self._init_identity_adapter(self.raw_adapter)
+        self._init_identity_adapter(self.canonical_adapter)
+
+    @staticmethod
+    def _init_identity_adapter(adapter: nn.Conv2d):
+        with torch.no_grad():
+            adapter.weight.zero_()
+            channels_per_group = adapter.in_channels // adapter.groups
+            outputs_per_group = adapter.out_channels // adapter.groups
+            if channels_per_group != outputs_per_group:
+                raise ValueError('identity adapter requires equal input/output width per group')
+            for group in range(adapter.groups):
+                start = group * outputs_per_group
+                for channel in range(outputs_per_group):
+                    adapter.weight[start + channel, channel, 0, 0] = 1.0
+            if adapter.bias is not None:
+                adapter.bias.zero_()
+
+    def _normalized_coherence(self, a: torch.Tensor, b: torch.Tensor) -> torch.Tensor:
+        """Return a bounded groupwise RV-style cross-modal coherence in [0, 1]."""
+        ap, bp = self.pool(a.float()), self.pool(b.float())
+        batch = ap.shape[0]
+        tokens = self.anchors * self.anchors
+        x = ap.reshape(batch, self.groups, self.group_width, tokens).transpose(-1, -2)
+        y = bp.reshape(batch, self.groups, self.group_width, tokens).transpose(-1, -2)
+        x = x - x.mean(-2, keepdim=True)
+        y = y - y.mean(-2, keepdim=True)
+        normalizer = max(1, tokens - 1)
+        c_xy = x.transpose(-1, -2) @ y / normalizer
+        c_xx = x.transpose(-1, -2) @ x / normalizer
+        c_yy = y.transpose(-1, -2) @ y / normalizer
+        numerator = torch.linalg.matrix_norm(c_xy, ord='fro').sum(-1)
+        energy_x = torch.linalg.matrix_norm(c_xx, ord='fro').sum(-1)
+        energy_y = torch.linalg.matrix_norm(c_yy, ord='fro').sum(-1)
+        denominator = (energy_x * energy_y + self.eps).sqrt()
+        return (numerator / denominator).clamp(0.0, 1.0).view(batch, 1, 1, 1)
+
+    def _guard_terms(self, a: torch.Tensor, b: torch.Tensor):
+        probability, trigger, energy_r, energy_i = self._reliability_terms(a, b)
+        del trigger
+        dev_r = torch.log(energy_r + 1e-4).abs()
+        dev_i = torch.log(energy_i + 1e-4).abs()
+        coherence = self._normalized_coherence(a, b)
+        typicality = torch.minimum(dev_r, dev_i)
+        dominance = (probability[:, :1] - probability[:, 1:]).abs()
+        coherent_pair = (coherence >= self.coherence_tau) & (typicality <= self.typicality_tau)
+        reliable_single = dominance >= self.dominance_tau
+        gate = (coherent_pair | reliable_single).to(a.dtype)
+        return gate, coherence, typicality, dominance, probability, energy_r, energy_i
+
+    def _canonical_branch(self, rgb: torch.Tensor, ir: torch.Tensor):
+        a, b = self._align(rgb, ir)
+        _, _, energy_r, energy_i = self._reliability_terms(a, b)
+        dev_r = torch.log(energy_r + 1e-4).abs()
+        dev_i = torch.log(energy_i + 1e-4).abs()
+        anomaly = torch.maximum(dev_r, dev_i)
+        b, shift = self._select_shift(
+            a, b, anomaly.flatten() < self.trigger_tau, return_diagnostics=True
+        )
+        canonical = self._reliability_output(a, b)
+        return a, b, canonical, shift
+
+    def forward_with_diagnostics(self, x):
+        raw = torch.cat((x[0], x[1]), dim=1)
+        a, b, canonical, shift = self._canonical_branch(x[0], x[1])
+        gate, coherence, typicality, dominance, probability, energy_r, energy_i = self._guard_terms(a, b)
+        raw_adapted = self.raw_adapter(raw)
+        canonical_adapted = self.canonical_adapter(canonical)
+        output = gate * canonical_adapted + (1.0 - gate) * raw_adapted
+        return output, {
+            **shift,
+            'gate': gate,
+            'coherence': coherence,
+            'typicality': typicality,
+            'dominance': dominance,
+            'probability': probability,
+            'energy_r': energy_r,
+            'energy_i': energy_i,
+            'raw': raw,
+            'canonical': canonical,
+            'raw_adapted': raw_adapted,
+            'canonical_adapted': canonical_adapted,
+        }
+
+    def forward(self, x):
+        raw = torch.cat((x[0], x[1]), dim=1)
+        a, b, canonical, _ = self._canonical_branch(x[0], x[1])
+        gate, *_ = self._guard_terms(a, b)
+        return gate * self.canonical_adapter(canonical) + (1.0 - gate) * self.raw_adapter(raw)

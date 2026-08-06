@@ -87,3 +87,15 @@
 - Added `tests/__init__.py` and regression tests for all Kaggle failures observed.
 - CLI train/validation/prediction/export now infer 3-channel RGB versus 6-channel RGB–IR input from each model instead of forcing six channels.
 - Final corrected validation: 87 pytest cases, all 12 shipped YAML build/forward checks, ten logical baseline/proposal one-epoch synthetic trainings, pipeline train/val/predict/TorchScript checks, optional W&B/Ray failure simulation, wheel build/install, and repository layout audit.
+
+## Recheck v9 — fair initialization, DCSPF-Guard, and statistical certification
+
+- Added `DCSPF`, a dual-coordinate raw/canonical guarded fusion candidate.
+- Added bounded normalized cross-modal coherence and three-evidence routing.
+- Added identity-initialized branch-specific grouped adapters.
+- Added the fair C3k2 DCSPF YAML configuration.
+- Added five numerical/gradient guard tests and two certificate tests.
+- Added a component-wise seeded five-seed proxy audit and threshold ablations.
+- Added `tools/certify_candidate.py` for finite-family paired Hoeffding lower bounds.
+- Added `DCSPF_MATHEMATICAL_APPENDIX.md` and `RECHECK_V9_REPORT.md`.
+- Explicitly rejected universal or “100% better” claims without full matched VEDAI evidence.

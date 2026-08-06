@@ -1,0 +1,47 @@
+# Proposed model: Residual Trust-region Procrustes Fusion (RTPF).
+# Fair control: architecture is identical to dual_concat except layer 9.
+# RTPF starts as exact direct concatenation (step_parameter = 0) and learns only
+# a Frobenius-norm-bounded canonical correction.
+scale: s
+ch: 6
+nc: 5
+scales:
+  s: [0.33, 0.50, 1024]
+
+backbone:
+  - [-1, 1, IN, []]
+  - [-1, 1, Multiin, [1]]
+  - [-2, 1, Multiin, [2]]
+  - [-2, 1, Conv, [64, 3, 2]]
+  - [-2, 1, Conv, [64, 3, 2]]
+  - [-2, 1, Conv, [128, 3, 2]]
+  - [-2, 1, Conv, [128, 3, 2]]
+  - [-2, 2, C3k2, [256, False, 0.25]]
+  - [-2, 2, C3k2, [256, False, 0.25]]
+  # groups, anchors, momentum, eps, reliability, gamma, trigger_tau, trigger_k,
+  # max_shift, shift_penalty, score_threshold, shift_margin,
+  # trust_radius, fallback_tau, fallback_k
+  - [[-2, -1], 1, RTPF, [32, 8, 0.03, 0.001, True, 1.5, 0.6, 12.0, 1, 0.03, 0.3, 0.02, 1.0, 1.0, 8.0]]
+  - [-1, 1, Conv, [256, 3, 2]]
+  - [-1, 2, C3k2, [512, False, 0.25]]
+  - [-1, 1, Conv, [512, 3, 2]]
+  - [-1, 2, C3k2, [512, True]]
+  - [-1, 1, Conv, [1024, 3, 2]]
+  - [-1, 3, C3k2, [1024, True]]
+  - [-1, 1, SPPF, [1024, 5]]
+  - [-1, 2, C2PSA, [1024]]
+
+head:
+  - [-1, 1, nn.Upsample, [None, 2, 'nearest']]
+  - [[-1, 13], 1, Concat, [1]]
+  - [-1, 2, C3k2, [512, False]]
+  - [-1, 1, nn.Upsample, [None, 2, 'nearest']]
+  - [[-1, 11], 1, Concat, [1]]
+  - [-1, 2, C3k2, [256, False]]
+  - [-1, 1, Conv, [256, 3, 2]]
+  - [[-1, 20], 1, Concat, [1]]
+  - [-1, 2, C3k2, [512, False]]
+  - [-1, 1, Conv, [512, 3, 2]]
+  - [[-1, 17], 1, Concat, [1]]
+  - [-1, 2, C3k2, [1024, True]]
+  - [[23, 26, 29], 1, OBB, [nc, 1]]

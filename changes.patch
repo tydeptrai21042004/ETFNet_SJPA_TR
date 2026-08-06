@@ -1,0 +1,4975 @@
+--- a/CHANGELOG_FIXES.md
++++ b/CHANGELOG_FIXES.md
+@@ -87,3 +87,15 @@
+ - Added `tests/__init__.py` and regression tests for all Kaggle failures observed.
+ - CLI train/validation/prediction/export now infer 3-channel RGB versus 6-channel RGB–IR input from each model instead of forcing six channels.
+ - Final corrected validation: 87 pytest cases, all 12 shipped YAML build/forward checks, ten logical baseline/proposal one-epoch synthetic trainings, pipeline train/val/predict/TorchScript checks, optional W&B/Ray failure simulation, wheel build/install, and repository layout audit.
++
++## Recheck v9 — fair initialization, DCSPF-Guard, and statistical certification
++
++- Added `DCSPF`, a dual-coordinate raw/canonical guarded fusion candidate.
++- Added bounded normalized cross-modal coherence and three-evidence routing.
++- Added identity-initialized branch-specific grouped adapters.
++- Added the fair C3k2 DCSPF YAML configuration.
++- Added five numerical/gradient guard tests and two certificate tests.
++- Added a component-wise seeded five-seed proxy audit and threshold ablations.
++- Added `tools/certify_candidate.py` for finite-family paired Hoeffding lower bounds.
++- Added `DCSPF_MATHEMATICAL_APPENDIX.md` and `RECHECK_V9_REPORT.md`.
++- Explicitly rejected universal or “100% better” claims without full matched VEDAI evidence.
+--- a/README.md
++++ b/README.md
+@@ -395,3 +395,15 @@
+ ## Organized source layout
+ 
+ Version 6 splits the implementation and documentation into bounded source packs while preserving all existing imports, commands, model YAMLs, public-dataset adapters, training, validation, prediction, export, and resume behavior. Every committed subfolder contains at most 100 files recursively. See [`REPOSITORY_LAYOUT.md`](REPOSITORY_LAYOUT.md) and run `python tools/audit_repository_layout.py` to verify the rule.
++
++## Recheck v9: DCSPF-Guard experimental candidate
++
++The repository now includes a stricter, fair-backbone fusion candidate:
++
++- `ultralytics/cfg/models/etfnet/etfnet_P2_C3k2_DCSPF_Guard.yaml`
++- `RECHECK_V9_REPORT.md`
++- `DCSPF_MATHEMATICAL_APPENDIX.md`
++- `VALIDATION/recheck_v9/fair_component_seeded_5seed.json`
++- `tools/certify_candidate.py`
++
++DCSPF routes between raw RGB–IR coordinates and the corrected Procrustes-canonical coordinates using bounded coherence, pooled-domain typicality, and modality dominance. It is experimental: the controlled proxy supports superiority over direct concatenation, but not superiority over corrected SJPA on every seed or aggregate robustness measure. Full VEDAI training is required before making a highest-mAP claim.
+--- a/kaggle/ETFNet_SJPA_TR_Corrected_Kaggle_VEDAI10_All_Baselines.py
++++ b/kaggle/ETFNet_SJPA_TR_Corrected_Kaggle_VEDAI10_All_Baselines.py
+@@ -19,10 +19,10 @@
+ REPO_URL = "https://github.com/tydeptrai21042004/ETFNet_SJPA_TR.git"
+ REPO_REF = "main"
+ SOURCE_MODE = "auto"  # auto | uploaded_zip | github
+-CORRECTED_ZIP_GLOB = "ETFNet_SJPA_TR_Corrected_v7.zip"
+-
+-EPOCHS = 10
+-SEEDS = [0]
++CORRECTED_ZIP_GLOB = "ETFNet_SJPA_TR_Corrected_StatisticalFix_v8.zip"
++
++EPOCHS = int(os.environ.get("ETFNET_EPOCHS", "100"))
++SEEDS = [int(x) for x in os.environ.get("ETFNET_SEEDS", "0,1,2").split(",") if x.strip()]
+ IMGSZ = 512
+ INITIAL_BATCH = 4
+ WORKERS = 2
+@@ -36,8 +36,8 @@
+ WORK_ROOT = Path("/kaggle/working")
+ REPO_DIR = WORK_ROOT / "ETFNet_SJPA_TR_Corrected"
+ DATA_ROOT = WORK_ROOT / "etfnet_vedai512_full"
+-RUN_ROOT = WORK_ROOT / "etfnet_corrected_vedai512_10epoch_all_baselines"
+-RESULT_ZIP = WORK_ROOT / "ETFNet_SJPA_TR_Corrected_VEDAI10_results.zip"
++RUN_ROOT = WORK_ROOT / f"etfnet_corrected_vedai512_{EPOCHS}epoch_{len(SEEDS)}seed"
++RESULT_ZIP = WORK_ROOT / f"ETFNet_SJPA_TR_Corrected_VEDAI_{EPOCHS}epoch_{len(SEEDS)}seed_results.zip"
+ 
+ 
+ def run(command, *, cwd=None, env=None, check=True, log_path=None):
+@@ -307,7 +307,9 @@
+     torch.cuda.empty_cache()
+ 
+ # 5) Model matrix and one ablation generated outside the source repository.
+-proposal_yaml = REPO_DIR / "ultralytics/cfg/models/etfnet/etfnet_P2_CAFEM_SJPA.yaml"
++legacy_proposal_yaml = REPO_DIR / "ultralytics/cfg/models/etfnet/etfnet_P2_CAFEM_SJPA.yaml"
++proposal_yaml = REPO_DIR / "ultralytics/cfg/models/etfnet/etfnet_P2_C3k2_SJPA_TR_Corrected.yaml"
++rtpf_yaml = REPO_DIR / "ultralytics/cfg/models/etfnet/etfnet_P2_C3k2_RTPF.yaml"
+ no_reliability_yaml = RUN_ROOT / "etfnet_P2_CAFEM_SJPA_noReliability.yaml"
+ proposal_cfg = yaml.safe_load(proposal_yaml.read_text(encoding="utf-8"))
+ for layer in proposal_cfg.get("backbone", []):
+@@ -327,7 +329,9 @@
+     "tgf_only": REPO_DIR / "ultralytics/cfg/models/etfnet/etfnet_noCAFEM_TGF.yaml",
+     "corrected_etfnet_tgf": REPO_DIR / "ultralytics/cfg/models/etfnet/etfnet_P2_CAFEM_TGF.yaml",
+     "goci_no_spatial": REPO_DIR / "ultralytics/cfg/models/etfnet/etfnet_P2_CAFEM_GOCI.yaml",
++    "sjpa_cafem_legacy": legacy_proposal_yaml,
+     "sjpa_no_reliability": no_reliability_yaml,
++    "rtpf_safety_ablation": rtpf_yaml,
+     "sjpa_tr_proposal": proposal_yaml,
+ }
+ for label, path in MODEL_MATRIX.items():
+@@ -453,7 +457,7 @@
+             raise RuntimeError(f"Corrected proposal smoke test failed: {error}")
+     print("Corrected full SJPA-TR real-data smoke training passed.")
+ 
+-# 6) Ten-epoch comparison.
++# 6) Controlled comparison using the configured epoch and seed counts.
+ records = []
+ for seed in SEEDS:
+     for label, model_path in MODEL_MATRIX.items():
+--- a/ultra_modeling/nn/modules/__init__.py
++++ b/ultra_modeling/nn/modules/__init__.py
+@@ -30,4 +30,4 @@
+            'C2f', 'C3x', 'C3TR', 'C3Ghost', 'GhostBottleneck', 'Bottleneck', 'BottleneckCSP', 'Proto', 'Detect',
+            'Segment', 'Pose', 'Classify', 'TransformerEncoderLayer', 'RepC3', 'RTDETRDecoder', 'AIFI',
+            'DeformableTransformerDecoder', 'DeformableTransformerDecoderLayer', 'MSDeformAttn', 'MLP', 'ResNetLayer',
+-           'OBB', 'IN', 'Multiin', 'MF', 'Add', 'Add2', 'GOCI', 'SJPA', 'C2fCIB', 'SCDown', 'PSA', 'C3k2', 'C2PSA', 'A2C2f', 'TGF')
++           'OBB', 'IN', 'Multiin', 'MF', 'Add', 'Add2', 'GOCI', 'SJPA', 'RTPF', 'DCSPF', 'C2fCIB', 'SCDown', 'PSA', 'C3k2', 'C2PSA', 'A2C2f', 'TGF')
+--- a/ultra_modeling/nn/modules/block.py
++++ b/ultra_modeling/nn/modules/block.py
+@@ -15,7 +15,7 @@
+ from ultralytics.utils.torch_utils import fuse_conv_and_bn
+ 
+ __all__ = ('DFL', 'HGBlock', 'HGStem', 'SPP', 'SPPF', 'C1', 'C2', 'C3', 'C2f', 'C3x', 'C3TR', 'C3Ghost', 'C2fCIB', 'SCDown', 'PSA', 'C3k2', 'CAFEM', 'C2PSA',
+-           'GhostBottleneck', 'Bottleneck', 'BottleneckCSP', 'Proto', 'RepC3', 'ResNetLayer', 'IN', 'Multiin', 'MF', 'Add', 'Add2', 'A2C2f', 'TGF', 'GOCI', 'SJPA')
++           'GhostBottleneck', 'Bottleneck', 'BottleneckCSP', 'Proto', 'RepC3', 'ResNetLayer', 'IN', 'Multiin', 'MF', 'Add', 'Add2', 'A2C2f', 'TGF', 'GOCI', 'SJPA', 'RTPF', 'DCSPF')
+ 
+ 
+ class SE_Block(nn.Module):
+@@ -1939,8 +1939,14 @@
+         probabilities lie on the two-simplex and are invariant to orthogonal
+         channel rotations because they depend only on squared feature norms.
+         """
+-        energy_r = a.float().square().mean((1, 2, 3), keepdim=True)
+-        energy_i = b.float().square().mean((1, 2, 3), keepdim=True)
++        # The whitening transform is estimated on the anchor grid. Reliability
++        # must therefore be measured on the same statistical domain; measuring
++        # it on the unpooled map systematically inflates energy whenever the
++        # anchor grid averages multiple feature cells.
++        a_stat = self.pool(a.float())
++        b_stat = self.pool(b.float())
++        energy_r = a_stat.square().mean((1, 2, 3), keepdim=True)
++        energy_i = b_stat.square().mean((1, 2, 3), keepdim=True)
+         dev_r = torch.log(energy_r + 1e-4).abs()
+         dev_i = torch.log(energy_i + 1e-4).abs()
+         probability = torch.cat((-self.reliability_gamma * dev_r,
+@@ -1987,7 +1993,7 @@
+                  reliability: bool = True, reliability_gamma: float = 1.5,
+                  trigger_tau: float = 0.6, trigger_k: float = 12.0,
+                  max_shift: int = 1, shift_penalty: float = 0.1,
+-                 score_threshold: float = 0.3):
++                 score_threshold: float = 0.3, shift_margin: float = 0.0):
+         super().__init__(channels, groups, anchors, momentum, eps, reliability,
+                          reliability_gamma, trigger_tau, trigger_k)
+         if max_shift < 0:
+@@ -1995,6 +2001,9 @@
+         self.max_shift = int(max_shift)
+         self.shift_penalty = float(shift_penalty)
+         self.score_threshold = float(score_threshold)
++        self.shift_margin = float(shift_margin)
++        if self.shift_margin < 0:
++            raise ValueError('shift_margin must be non-negative')
+ 
+     def _score_cross(self, cross):
+         # Shift selection is discrete, so gradients through the score cannot
+@@ -2040,13 +2049,18 @@
+             bt = bp.reshape(bs, self.groups, self.group_width, -1).permute(0, 1, 3, 2)
+             bt = bt - bt.mean(-2, keepdim=True)
+             cross = at.transpose(-1, -2) @ bt / n
+-            score = self._score_cross(cross) - self.shift_penalty * float(dy * dy + dx * dx)
++            score = (
++                self._score_cross(cross) / (self.groups * self.group_width)
++                - self.shift_penalty * float(dy * dy + dx * dx)
++            )
+             scores.append(score)
+             shifted.append(candidate)
+         score_matrix = torch.stack(scores, dim=1)
+-        selected = score_matrix.argmax(1)
++        best_score, selected = score_matrix.max(1)
+         zero_index = shifts.index((0, 0))
+-        selected = torch.where(eligible, selected, torch.full_like(selected, zero_index))
++        improvement = best_score - score_matrix[:, zero_index]
++        accept_shift = eligible & (improvement > self.shift_margin)
++        selected = torch.where(accept_shift, selected, torch.full_like(selected, zero_index))
+         stack = torch.stack(shifted, dim=1)  # B, S, C, H, W
+         gather_index = selected.view(bs, 1, 1, 1, 1).expand(-1, 1, b.shape[1], b.shape[2], b.shape[3])
+         output = stack.gather(1, gather_index).squeeze(1)
+@@ -2057,7 +2071,9 @@
+             'selected_index': selected,
+             'selected_shift': shift_tensor[selected],
+             'eligible': eligible,
++            'accept_shift': accept_shift,
+             'zero_score': zero_score,
++            'improvement': improvement,
+             'score_matrix': score_matrix,
+         }
+ 
+@@ -2093,3 +2109,245 @@
+         anomaly = torch.maximum(dev_r, dev_i)
+         b = self._select_shift(a, b, anomaly.flatten() < self.trigger_tau)
+         return self._reliability_output(a, b)
++
++
++class RTPF(SJPA):
++    """Residual Trust-region Procrustes Fusion.
++
++    RTPF preserves the direct RGB--IR concatenation path and injects the
++    canonical SJPA representation only through a norm-projected residual.  The
++    scalar residual step is initialized at zero, so the module is exactly equal
++    to direct concatenation at initialization.  For every sample ``j`` the
++    correction obeys
++
++        ||RTPF_j - concat_j||_F <= trust_radius * ||concat_j||_F.
++
++    A deterministic fallback gate suppresses the canonical correction when both
++    modalities are statistically atypical in the same pooled whitening domain.
++    """
++
++    def __init__(self, channels: int, groups: int = 32, anchors: int = 8,
++                 momentum: float = 0.03, eps: float = 1e-3,
++                 reliability: bool = True, reliability_gamma: float = 1.5,
++                 trigger_tau: float = 0.6, trigger_k: float = 12.0,
++                 max_shift: int = 1, shift_penalty: float = 0.1,
++                 score_threshold: float = 0.3, shift_margin: float = 0.02,
++                 trust_radius: float = 1.0, fallback_tau: float = 1.0,
++                 fallback_k: float = 8.0):
++        super().__init__(channels, groups, anchors, momentum, eps, reliability,
++                         reliability_gamma, trigger_tau, trigger_k, max_shift,
++                         shift_penalty, score_threshold, shift_margin)
++        if trust_radius <= 0:
++            raise ValueError('trust_radius must be positive')
++        if fallback_k <= 0:
++            raise ValueError('fallback_k must be positive')
++        self.trust_radius = float(trust_radius)
++        self.fallback_tau = float(fallback_tau)
++        self.fallback_k = float(fallback_k)
++        # softsign(step_parameter) is exactly zero at initialization, bounded in
++        # (-1, 1), and has derivative one at zero.
++        self.step_parameter = nn.Parameter(torch.zeros(()))
++
++    @staticmethod
++    def _sample_frobenius(x: torch.Tensor) -> torch.Tensor:
++        return x.float().flatten(1).norm(dim=1).view(-1, 1, 1, 1)
++
++    def _trust_project(self, raw: torch.Tensor, candidate: torch.Tensor):
++        correction = candidate - raw
++        raw_norm = self._sample_frobenius(raw)
++        correction_norm = self._sample_frobenius(correction)
++        radius = self.trust_radius * raw_norm
++        scale = torch.minimum(
++            torch.ones_like(correction_norm),
++            radius / (correction_norm + self.eps),
++        ).to(correction.dtype)
++        return correction * scale, correction_norm, radius
++
++    def forward_with_diagnostics(self, x):
++        raw = torch.cat((x[0], x[1]), dim=1)
++        a, b = self._align(x[0], x[1])
++        _, _, energy_r_pre, energy_i_pre = self._reliability_terms(a, b)
++        dev_r_pre = torch.log(energy_r_pre + 1e-4).abs()
++        dev_i_pre = torch.log(energy_i_pre + 1e-4).abs()
++        anomaly = torch.maximum(dev_r_pre, dev_i_pre)
++        b, shift = self._select_shift(
++            a, b, anomaly.flatten() < self.trigger_tau, return_diagnostics=True
++        )
++        candidate = self._reliability_output(a, b)
++        probability, trigger, energy_r, energy_i = self._reliability_terms(a, b)
++        dev_r = torch.log(energy_r + 1e-4).abs()
++        dev_i = torch.log(energy_i + 1e-4).abs()
++        # At least one plausible stream is enough to permit the canonical branch;
++        # simultaneous atypicality causes a smooth fallback to raw concatenation.
++        fallback_gate = torch.sigmoid(
++            self.fallback_k * (self.fallback_tau - torch.minimum(dev_r, dev_i))
++        ).to(raw.dtype)
++        correction, correction_norm, radius = self._trust_project(raw, candidate)
++        step = self.step_parameter / (1.0 + self.step_parameter.abs())
++        output = raw + step.to(raw.dtype) * fallback_gate * correction
++        diagnostics = {
++            **shift,
++            'probability': probability,
++            'trigger': trigger,
++            'energy_r': energy_r,
++            'energy_i': energy_i,
++            'fallback_gate': fallback_gate,
++            'step': step.detach(),
++            'correction_norm': correction_norm,
++            'trust_radius_norm': radius,
++            'raw': raw,
++            'candidate': candidate,
++        }
++        return output, diagnostics
++
++    def forward(self, x):
++        raw = torch.cat((x[0], x[1]), dim=1)
++        a, b = self._align(x[0], x[1])
++        _, _, energy_r, energy_i = self._reliability_terms(a, b)
++        dev_r = torch.log(energy_r + 1e-4).abs()
++        dev_i = torch.log(energy_i + 1e-4).abs()
++        anomaly = torch.maximum(dev_r, dev_i)
++        b = self._select_shift(a, b, anomaly.flatten() < self.trigger_tau)
++        candidate = self._reliability_output(a, b)
++        _, _, energy_r, energy_i = self._reliability_terms(a, b)
++        dev_r = torch.log(energy_r + 1e-4).abs()
++        dev_i = torch.log(energy_i + 1e-4).abs()
++        fallback_gate = torch.sigmoid(
++            self.fallback_k * (self.fallback_tau - torch.minimum(dev_r, dev_i))
++        ).to(raw.dtype)
++        correction, _, _ = self._trust_project(raw, candidate)
++        step = self.step_parameter / (1.0 + self.step_parameter.abs())
++        return raw + step.to(raw.dtype) * fallback_gate * correction
++
++
++class DCSPF(SJPA):
++    """Dual-Coordinate Safe Procrustes Fusion with a reliability--coherence guard.
++
++    DCSPF retains two coordinate experts:
++
++    1. the raw RGB--IR concatenation, and
++    2. the statistically canonicalized SJPA representation.
++
++    A deterministic sample-level guard selects the canonical expert when either
++    the pair is jointly coherent and statistically typical, or one modality has
++    a clear reliability advantage. Otherwise, the module uses the raw expert.
++    Each expert has an identity-initialized grouped 1x1 adapter, so the module is
++    exactly branch preserving at initialization while allowing the detector loss
++    to calibrate the two coordinate systems independently.
++    """
++
++    def __init__(self, channels: int, groups: int = 32, anchors: int = 8,
++                 momentum: float = 0.03, eps: float = 1e-3,
++                 reliability: bool = True, reliability_gamma: float = 1.5,
++                 trigger_tau: float = 0.6, trigger_k: float = 12.0,
++                 max_shift: int = 1, shift_penalty: float = 0.1,
++                 score_threshold: float = 0.3, shift_margin: float = 0.02,
++                 coherence_tau: float = 0.35, typicality_tau: float = 0.6,
++                 dominance_tau: float = 0.8):
++        super().__init__(channels, groups, anchors, momentum, eps, reliability,
++                         reliability_gamma, trigger_tau, trigger_k, max_shift,
++                         shift_penalty, score_threshold, shift_margin)
++        if not 0.0 <= coherence_tau <= 1.0:
++            raise ValueError('coherence_tau must lie in [0, 1]')
++        if typicality_tau < 0.0:
++            raise ValueError('typicality_tau must be non-negative')
++        if not 0.0 <= dominance_tau <= 1.0:
++            raise ValueError('dominance_tau must lie in [0, 1]')
++        self.coherence_tau = float(coherence_tau)
++        self.typicality_tau = float(typicality_tau)
++        self.dominance_tau = float(dominance_tau)
++        fused_channels = 2 * self.channels
++        # groups=2 prevents the adapter from mixing RGB and IR halves before the
++        # detector's normal post-fusion convolution. Both adapters are exact
++        # identities at initialization.
++        self.raw_adapter = nn.Conv2d(fused_channels, fused_channels, 1, groups=2, bias=True)
++        self.canonical_adapter = nn.Conv2d(fused_channels, fused_channels, 1, groups=2, bias=True)
++        self._init_identity_adapter(self.raw_adapter)
++        self._init_identity_adapter(self.canonical_adapter)
++
++    @staticmethod
++    def _init_identity_adapter(adapter: nn.Conv2d):
++        with torch.no_grad():
++            adapter.weight.zero_()
++            channels_per_group = adapter.in_channels // adapter.groups
++            outputs_per_group = adapter.out_channels // adapter.groups
++            if channels_per_group != outputs_per_group:
++                raise ValueError('identity adapter requires equal input/output width per group')
++            for group in range(adapter.groups):
++                start = group * outputs_per_group
++                for channel in range(outputs_per_group):
++                    adapter.weight[start + channel, channel, 0, 0] = 1.0
++            if adapter.bias is not None:
++                adapter.bias.zero_()
++
++    def _normalized_coherence(self, a: torch.Tensor, b: torch.Tensor) -> torch.Tensor:
++        """Return a bounded groupwise RV-style cross-modal coherence in [0, 1]."""
++        ap, bp = self.pool(a.float()), self.pool(b.float())
++        batch = ap.shape[0]
++        tokens = self.anchors * self.anchors
++        x = ap.reshape(batch, self.groups, self.group_width, tokens).transpose(-1, -2)
++        y = bp.reshape(batch, self.groups, self.group_width, tokens).transpose(-1, -2)
++        x = x - x.mean(-2, keepdim=True)
++        y = y - y.mean(-2, keepdim=True)
++        normalizer = max(1, tokens - 1)
++        c_xy = x.transpose(-1, -2) @ y / normalizer
++        c_xx = x.transpose(-1, -2) @ x / normalizer
++        c_yy = y.transpose(-1, -2) @ y / normalizer
++        numerator = torch.linalg.matrix_norm(c_xy, ord='fro').sum(-1)
++        energy_x = torch.linalg.matrix_norm(c_xx, ord='fro').sum(-1)
++        energy_y = torch.linalg.matrix_norm(c_yy, ord='fro').sum(-1)
++        denominator = (energy_x * energy_y + self.eps).sqrt()
++        return (numerator / denominator).clamp(0.0, 1.0).view(batch, 1, 1, 1)
++
++    def _guard_terms(self, a: torch.Tensor, b: torch.Tensor):
++        probability, trigger, energy_r, energy_i = self._reliability_terms(a, b)
++        del trigger
++        dev_r = torch.log(energy_r + 1e-4).abs()
++        dev_i = torch.log(energy_i + 1e-4).abs()
++        coherence = self._normalized_coherence(a, b)
++        typicality = torch.minimum(dev_r, dev_i)
++        dominance = (probability[:, :1] - probability[:, 1:]).abs()
++        coherent_pair = (coherence >= self.coherence_tau) & (typicality <= self.typicality_tau)
++        reliable_single = dominance >= self.dominance_tau
++        gate = (coherent_pair | reliable_single).to(a.dtype)
++        return gate, coherence, typicality, dominance, probability, energy_r, energy_i
++
++    def _canonical_branch(self, rgb: torch.Tensor, ir: torch.Tensor):
++        a, b = self._align(rgb, ir)
++        _, _, energy_r, energy_i = self._reliability_terms(a, b)
++        dev_r = torch.log(energy_r + 1e-4).abs()
++        dev_i = torch.log(energy_i + 1e-4).abs()
++        anomaly = torch.maximum(dev_r, dev_i)
++        b, shift = self._select_shift(
++            a, b, anomaly.flatten() < self.trigger_tau, return_diagnostics=True
++        )
++        canonical = self._reliability_output(a, b)
++        return a, b, canonical, shift
++
++    def forward_with_diagnostics(self, x):
++        raw = torch.cat((x[0], x[1]), dim=1)
++        a, b, canonical, shift = self._canonical_branch(x[0], x[1])
++        gate, coherence, typicality, dominance, probability, energy_r, energy_i = self._guard_terms(a, b)
++        raw_adapted = self.raw_adapter(raw)
++        canonical_adapted = self.canonical_adapter(canonical)
++        output = gate * canonical_adapted + (1.0 - gate) * raw_adapted
++        return output, {
++            **shift,
++            'gate': gate,
++            'coherence': coherence,
++            'typicality': typicality,
++            'dominance': dominance,
++            'probability': probability,
++            'energy_r': energy_r,
++            'energy_i': energy_i,
++            'raw': raw,
++            'canonical': canonical,
++            'raw_adapted': raw_adapted,
++            'canonical_adapted': canonical_adapted,
++        }
++
++    def forward(self, x):
++        raw = torch.cat((x[0], x[1]), dim=1)
++        a, b, canonical, _ = self._canonical_branch(x[0], x[1])
++        gate, *_ = self._guard_terms(a, b)
++        return gate * self.canonical_adapter(canonical) + (1.0 - gate) * self.raw_adapter(raw)
+--- a/ultra_modeling/nn/tasks.py
++++ b/ultra_modeling/nn/tasks.py
+@@ -764,7 +764,7 @@
+         elif m is TGF:
+             c2 = ch[f[0]]
+             args = [c2, *args[1:]]
+-        elif m in (GOCI, SJPA):
++        elif m in (GOCI, SJPA, RTPF, DCSPF):
+             c1 = ch[f[0]]
+             c2 = 2 * c1
+             args = [c1, *args]
+--- a/CORRECTED_PROPOSAL_ANALYSIS.md
++++ b/CORRECTED_PROPOSAL_ANALYSIS.md
+@@ -0,0 +1,314 @@
++# Corrected SJPA-TR Proposal: Test Results, Mathematics, and Novelty Positioning
++
++## 1. Decision
++
++The recommended **main proposal** is:
++
++> **Statistically Calibrated SJPA-TR on the C3k2 dual-stream backbone**
++
++Configuration:
++
++```text
++ultralytics/cfg/models/etfnet/etfnet_P2_C3k2_SJPA_TR_Corrected.yaml
++```
++
++This is preferred over the original `etfnet_P2_CAFEM_SJPA.yaml` because the original experiment changed both the fusion rule and the backbone. The corrected configuration is identical to `dual_concat` except at fusion layer 9. It therefore provides a fair comparison of the proposed fusion rule.
++
++The optional `RTPF` model is retained as a safety ablation, not as the main performance model:
++
++```text
++ultralytics/cfg/models/etfnet/etfnet_P2_C3k2_RTPF.yaml
++```
++
++RTPF is mathematically safer, but its controlled proxy training was too conservative and did not outperform direct SJPA.
++
++---
++
++## 2. Confirmed root defect
++
++The original code estimated whitening statistics on an `8 x 8` pooled feature grid but measured reliability energy on the unpooled P2 feature map. For a `512 x 512` image, P2 is approximately `128 x 128`.
++
++The old computation was
++
++\[
++E_m^{\mathrm{old}}
++=\frac{1}{CHW}\|A_m\|_F^2,
++\]
++
++where the whitening matrix had been estimated from pooled averages. Average pooling reduces covariance, so applying its inverse square root to the full-resolution map inflated feature energy.
++
++A direct diagnostic produced:
++
++| Quantity | Measured value |
++|---|---:|
++| Full-resolution RGB energy | 209.67 |
++| Full-resolution IR energy | 185.36 |
++| Old reliability trigger | 1.0000 |
++| Corrected pooled RGB energy | 0.7843 |
++| Corrected pooled IR energy | 0.6981 |
++| Corrected trigger | 0.0528 |
++
++Thus, the old reliability correction was effectively always active. It also prevented the spatial search from operating because the same anomaly score was used as an eligibility condition.
++
++The corrected energy is computed in the same anchor domain as the covariance:
++
++\[
++E_m
++=\frac{1}{C a^2}
++\left\|P_a(A_m)\right\|_F^2,
++\]
++
++where \(P_a\) is adaptive pooling to an \(a\times a\) anchor grid.
++
++---
++
++## 3. Corrected mathematical method
++
++Let RGB and IR features be
++
++\[
++R,I\in\mathbb{R}^{B\times C\times H\times W}.
++\]
++
++Channels are divided into \(G\) groups of width \(d=C/G\).
++
++### 3.1 Groupwise statistical calibration
++
++For each group \(g\), pooled tokens are centered and covariance matrices are estimated:
++
++\[
++\Sigma_{r,g}=\frac{1}{N-1}X_{r,g}^{\top}X_{r,g},\qquad
++\Sigma_{i,g}=\frac{1}{N-1}X_{i,g}^{\top}X_{i,g}.
++\]
++
++Whitening operators are
++
++\[
++W_{r,g}=(\Sigma_{r,g}+\varepsilon I)^{-1/2},\qquad
++W_{i,g}=(\Sigma_{i,g}+\varepsilon I)^{-1/2}.
++\]
++
++### 3.2 Closed-form orthogonal Procrustes alignment
++
++The cross-covariance in the whitened domain is
++
++\[
++M_g=W_{r,g}\Sigma_{ri,g}W_{i,g}.
++\]
++
++If
++
++\[
++M_g=U_gS_gV_g^{\top},
++\]
++
++then
++
++\[
++Q_g^{\star}=U_gV_g^{\top}
++\]
++
++solves
++
++\[
++Q_g^{\star}
++=\arg\min_{Q^{\top}Q=I}
++\|X_{r,g}W_{r,g}Q-X_{i,g}W_{i,g}\|_F^2.
++\]
++
++This gives a closed-form channel-coordinate alignment without trainable fusion parameters.
++
++### 3.3 Selective spatial correction
++
++For candidate translation \(\delta\in\{-s,\ldots,s\}^2\), define the normalized score
++
++\[
++S(\delta)
++=\frac{1}{Gd}\sum_{g=1}^{G}
++\left\|C_g(\delta)\right\|_*
++-\lambda\|\delta\|_2^2,
++\]
++
++where \(\|\cdot\|_*\) is the nuclear norm of the groupwise cross-covariance.
++
++The corrected implementation accepts a nonzero shift only if
++
++\[
++S(\delta^\star)-S(0)>m,
++\]
++
++where \(m\ge 0\) is a required score-gain margin. This avoids choosing a shift from negligible numerical differences.
++
++### 3.4 Reliability simplex
++
++Using pooled-domain energies,
++
++\[
++d_m=|\log(E_m+\epsilon)|,
++\]
++
++and modality probabilities are
++
++\[
++p_m=\frac{\exp(-\gamma d_m)}
++{\exp(-\gamma d_r)+\exp(-\gamma d_i)}.
++\]
++
++Therefore,
++
++\[
++p_r+p_i=1,
++\qquad p_r,p_i\in[0,1].
++\]
++
++The reliability trigger is
++
++\[
++t=\sigma\left(k\left[\max(d_r,d_i)-\tau\right]\right).
++\]
++
++The bounded rescaling factors are
++
++\[
++s_r=\sqrt{2p_r},\qquad s_i=\sqrt{2p_i},
++\]
++
++and the output branches are
++
++\[
++\widetilde A=(1-t)A+t s_rA,
++\qquad
++\widetilde B=(1-t)B+t s_iB.
++\]
++
++Because \(s_m\in[0,\sqrt{2}]\), the correction cannot create an unbounded reliability gain.
++
++---
++
++## 4. Controlled test results
++
++### 4.1 Repository and numerical validation
++
++- Full repository test suite: **98 passed**.
++- Mathematical SJPA/RTPF tests: all passed.
++- All shipped model configurations: build successfully.
++- Corrected proposal parameter count: **11,205,570**.
++- `dual_concat` parameter count: **11,205,570**.
++- The main comparison is therefore parameter matched.
++
++### 4.2 Five-seed controlled detection proxy
++
++The proxy is a synthetic controlled detection problem. It is useful for mechanism testing but is **not a substitute for VEDAI mAP**.
++
++| Method | Clean proxy mAP50 | Robust mean |
++|---|---:|---:|
++| `dual_concat` | 0.35584 ± 0.04707 | 0.04664 ± 0.01218 |
++| TGF | 0.26307 ± 0.03343 | 0.05020 ± 0.01001 |
++| PBTR | 0.25751 ± 0.09699 | 0.04998 ± 0.01834 |
++| GOCI | 0.35822 ± 0.04912 | 0.04177 ± 0.00973 |
++| **SJPA** | **0.46150 ± 0.08595** | **0.26748 ± 0.04807** |
++
++Against the strongest clean baseline, SJPA improved by
++
++\[
++\frac{0.46150-0.35822}{0.35822}\times100
++=28.83\%.
++\]
++
++Against the strongest robust-mean baseline, it improved by
++
++\[
++\frac{0.26748-0.05020}{0.05020}\times100
++\approx432.9\%.
++\]
++
++Paired one-sided tests across five seeds gave:
++
++- Clean: \(p=0.00217\).
++- RGB noise: \(p=0.00190\).
++- IR noise: \(p=0.00036\).
++- Missing RGB: \(p=0.00099\).
++- Missing IR: \(p=0.00054\).
++- IR shift: \(p=0.00083\).
++
++### 4.3 Remaining failure
++
++Under simultaneous mixed corruption, SJPA obtained only
++
++\[
++0.00025
++\]
++
++versus
++
++\[
++0.01826
++\]
++
++for direct concatenation. The current method is therefore **not universally best**. This condition should be reported, not hidden.
++
++---
++
++## 5. Novelty assessment
++
++A literature search found neighboring ideas in:
++
++- scene-specific RGB-X fusion;
++- cosine-similarity channel resampling;
++- uncertainty-aware alignment;
++- condition-aware dynamic modality weighting;
++- distribution-aligned multimodal detection;
++- feature purification and selection.
++
++The search did **not** identify the exact combination of:
++
++1. parameter-free groupwise whitening;
++2. closed-form orthogonal Procrustes channel alignment;
++3. finite zero-padded spatial search scored by normalized groupwise nuclear norm;
++4. a strict score-gain acceptance margin;
++5. reliability estimated in the same pooled statistical domain;
++6. simplex-constrained bounded modality rescaling;
++7. insertion into a parameter-matched RGB-IR OBB detector.
++
++This supports a **plausible novelty claim**, but it is not proof of worldwide novelty. A paper should state the contribution precisely rather than claim that Procrustes alignment, reliability weighting, or spatial alignment are individually new.
++
++Recommended claim:
++
++> We introduce a statistically calibrated, parameter-free RGB-IR fusion operator that couples groupwise closed-form Procrustes alignment with margin-gated spatial correction and pooled-domain simplex reliability. Unlike learned attention fusion, the operator has an explicit optimization solution, a normalized shift-selection criterion, and no increase in detector parameter count.
++
++Avoid the claim:
++
++> We are the first method to align or reliability-weight RGB and infrared features.
++
++---
++
++## 6. Required real-data experiment
++
++The corrected real VEDAI result was not generated in the CPU-only test environment. The supplied Kaggle script defaults to:
++
++```text
++ETFNET_EPOCHS=100
++ETFNET_SEEDS=0,1,2
++```
++
++Main proposal label:
++
++```text
++sjpa_tr_proposal
++```
++
++The experiment matrix also includes:
++
++- `dual_concat`;
++- `sjpa_cafem_legacy`;
++- `sjpa_no_reliability`;
++- `rtpf_safety_ablation`;
++- the remaining original baselines.
++
++Do not claim the proposal has the highest VEDAI mAP until that GPU experiment finishes and the three-seed mean exceeds `dual_concat` with uncertainty reported.
++
++---
++
++## 7. Final recommendation
++
++Use the corrected C3k2-SJPA configuration as the main proposal. Its design is mathematically interpretable, parameter matched, and strongly supported by the controlled proxy. Keep RTPF as a safety-oriented ablation. The real-data paper claim remains conditional on the new 100-epoch, three-seed VEDAI benchmark.
+--- a/DCSPF_MATHEMATICAL_APPENDIX.md
++++ b/DCSPF_MATHEMATICAL_APPENDIX.md
+@@ -0,0 +1,403 @@
++# Mathematical Appendix: DCSPF-Guard
++
++## 1. Scope and notation
++
++Let the paired P2 feature tensors be
++
++\[
++R,I\in\mathbb{R}^{B\times C\times H\times W}.
++\]
++
++Channels are partitioned into \(G\) groups of width \(d=C/G\). A fixed pooling operator \(P_a\) maps each feature map to \(a\times a\) anchors. For one sample and one group, the centered pooled token matrices are
++
++\[
++X_g,Y_g\in\mathbb{R}^{n\times d},\qquad n=a^2.
++\]
++
++DCSPF has two coordinate experts:
++
++1. the raw expert \(Z_{\rm raw}=[R;I]\);
++2. the canonical expert \(Z_{\rm can}\), produced by covariance calibration, orthogonal Procrustes alignment, margin-gated spatial correction, and bounded reliability rescaling.
++
++The final hard guard is
++
++\[
++Z=(1-g)A_{\rm raw}(Z_{\rm raw})+gA_{\rm can}(Z_{\rm can}),\qquad g\in\{0,1\},
++\]
++
++where both grouped \(1\times1\) adapters are initialized as exact identities.
++
++---
++
++## 2. Statistical-domain consistency
++
++For modality \(m\in\{r,i\}\), DCSPF estimates mean and covariance in the pooled anchor domain:
++
++\[
++\mu_{m,g}=\frac1n\sum_{j=1}^{n}X_{m,g,j},
++\]
++
++\[
++\Sigma_{m,g}=\frac{1}{n-1}(X_{m,g}-\mathbf 1\mu_{m,g}^{\top})^{\top}
++(X_{m,g}-\mathbf 1\mu_{m,g}^{\top})+\varepsilon I_d.
++\]
++
++The whitening matrix is
++
++\[
++W_{m,g}=\Sigma_{m,g}^{-1/2}.
++\]
++
++### Proposition 0 — bounded whitening gain
++
++Because the regularized covariance eigenvalues satisfy
++
++\[
++\lambda_{\min}(\Sigma_{m,g})\geq\varepsilon,
++\]
++
++we have
++
++\[
++\|W_{m,g}\|_2\leq\varepsilon^{-1/2}.
++\]
++
++Consequently,
++
++\[
++\|XW_{m,g}\|_F\leq\varepsilon^{-1/2}\|X\|_F.
++\]
++
++The eigenvalue floor therefore prevents an arbitrarily large whitening operator. Moreover, a convex running-statistics update preserves positive semidefiniteness of the covariance buffers when initialized from positive semidefinite estimates.
++
++Reliability is measured in the same pooled domain:
++
++\[
++E_m=\frac{1}{Ca^2}\left\|P_a(\widetilde F_m)\right\|_F^2,
++\qquad
++D_m=\left|\log(E_m+\epsilon_0)\right|.
++\]
++
++This removes the former mismatch in which covariance was estimated after aggressive pooling but reliability energy was measured on the unpooled P2 tensor.
++
++---
++
++## 3. Closed-form groupwise Procrustes alignment
++
++Define the whitened cross-covariance
++
++\[
++M_g=W_{r,g}\Sigma_{ri,g}W_{i,g}.
++\]
++
++Let
++
++\[
++M_g=U_gS_gV_g^{\top}
++\]
++
++be its singular-value decomposition. The canonical channel rotation is
++
++\[
++Q_g^{\star}=U_gV_g^{\top}.
++\]
++
++### Proposition 1 — optimality
++
++\(Q_g^{\star}\) solves
++
++\[
++\min_{Q^{\top}Q=I_d}\|X_{r,g}W_{r,g}Q-X_{i,g}W_{i,g}\|_F^2.
++\]
++
++### Proof
++
++Expanding the squared norm yields constants minus
++
++\[
++2\operatorname{tr}(Q^{\top}M_g).
++\]
++
++Thus the minimization is equivalent to maximizing \(\operatorname{tr}(Q^{\top}M_g)\) over orthogonal \(Q\). The orthogonal Procrustes theorem gives the maximizer \(Q_g^{\star}=U_gV_g^{\top}\). ∎
++
++### Corollary 1 — energy preservation
++
++Because \(Q_g^{\star}\) is orthogonal,
++
++\[
++\|XQ_g^{\star}\|_F=\|X\|_F.
++\]
++
++Therefore, channel alignment itself cannot amplify the Frobenius energy of the whitened RGB group.
++
++---
++
++## 4. Bounded normalized cross-modal coherence
++
++For each group define
++
++\[
++C_{xy,g}=\frac{X_g^{\top}Y_g}{n-1},\quad
++C_{xx,g}=\frac{X_g^{\top}X_g}{n-1},\quad
++C_{yy,g}=\frac{Y_g^{\top}Y_g}{n-1}.
++\]
++
++DCSPF uses
++
++\[
++\kappa=
++\frac{\sum_{g=1}^{G}\|C_{xy,g}\|_F}
++{\sqrt{\left(\sum_{g=1}^{G}\|C_{xx,g}\|_F\right)
++       \left(\sum_{g=1}^{G}\|C_{yy,g}\|_F\right)}+\epsilon}.
++\]
++
++### Proposition 2 — coherence bound
++
++Ignoring the positive numerical stabilizer in the denominator,
++
++\[
++0\leq\kappa\leq1.
++\]
++
++### Proof
++
++For every group,
++
++\[
++\|X_g^{\top}Y_g\|_F^2
++=\operatorname{tr}(X_gX_g^{\top}Y_gY_g^{\top})
++\leq\|X_gX_g^{\top}\|_F\|Y_gY_g^{\top}\|_F.
++\]
++
++The nonzero singular values of \(X_gX_g^{\top}\) and \(X_g^{\top}X_g\) coincide, hence
++
++\[
++\|C_{xy,g}\|_F
++\leq\sqrt{\|C_{xx,g}\|_F\|C_{yy,g}\|_F}.
++\]
++
++Summing over groups and applying Cauchy--Schwarz gives
++
++\[
++\sum_g\|C_{xy,g}\|_F
++\leq
++\sqrt{\left(\sum_g\|C_{xx,g}\|_F\right)
++      \left(\sum_g\|C_{yy,g}\|_F\right)}.
++\]
++
++Nonnegativity is immediate from the norm definition. ∎
++
++The stabilizer and implementation clamp preserve the numerical interval \([0,1]\).
++
++### Proposition 2b — coordinate and scale invariance
++
++For orthogonal channel transforms \(Q_x,Q_y\) and nonzero scalars \(a,b\),
++
++\[
++\kappa(aXQ_x,bYQ_y)=\kappa(X,Y).
++\]
++
++Indeed, the Frobenius norm is unitarily invariant, while the factors \(|a|\), \(|b|\) cancel between numerator and denominator. Thus the routing evidence does not depend on an arbitrary orthogonal channel basis or global feature scale.
++
++---
++
++## 5. Bounded reliability rescaling
++
++Define reliability probabilities
++
++\[
++p_m=\frac{e^{-\gamma D_m}}{e^{-\gamma D_r}+e^{-\gamma D_i}},
++\qquad p_r+p_i=1.
++\]
++
++The modality scales are
++
++\[
++s_m=\sqrt{2p_m}.
++\]
++
++### Proposition 3 — gain and joint-energy bounds
++
++\[
++0\leq s_m\leq\sqrt 2,
++\]
++
++and, for canonical modality tensors \(A,B\),
++
++\[
++\|[s_rA;s_iB]\|_F^2
++=2p_r\|A\|_F^2+2p_i\|B\|_F^2
++\leq2\max\{\|A\|_F^2,\|B\|_F^2\}.
++\]
++
++Thus the reliability rule cannot create unbounded feature gain.
++
++---
++
++## 6. Margin-certified spatial selection
++
++For displacement \(\delta\) in a finite candidate set \(\mathcal D\), the normalized score is
++
++\[
++S(\delta)=\frac1{Gd}\sum_{g=1}^{G}\|C_g(\delta)\|_*
++-\lambda\|\delta\|_2^2.
++\]
++
++A nonzero displacement is accepted only if
++
++\[
++S(\delta^{\star})\geq S(0)+m.
++\]
++
++### Proposition 4 — no weak-evidence shift
++
++The returned displacement is either zero or has a score improvement of at least \(m\) over zero displacement. This follows directly from the acceptance predicate. Consequently, a nonzero translation cannot be selected solely because of an arbitrarily small numerical argmax difference.
++
++---
++
++## 7. Dual-evidence guard
++
++Let
++
++\[
++T=\min(D_r,D_i),\qquad
++\Delta_p=|p_r-p_i|.
++\]
++
++The guard is
++
++\[
++g=
++\mathbf 1\left[
++(\kappa\geq\tau_c\land T\leq\tau_t)
++\lor
++(\Delta_p\geq\tau_d)
++\right].
++\]
++
++It selects the canonical expert under either of two interpretable conditions:
++
++1. **joint evidence:** the pair is coherent and at least one stream is statistically typical;
++2. **single-modality evidence:** one stream has a decisive reliability advantage.
++
++### Proposition 5 — exact fallback condition
++
++The raw expert is selected exactly when
++
++\[
++(\kappa<\tau_c\lor T>\tau_t)\land\Delta_p<\tau_d.
++\]
++
++This is De Morgan's law applied to the guard. It characterizes the intended mixed-failure region: insufficient pair coherence/typicality and no trustworthy modality winner.
++
++---
++
++## 8. Initialization invariance
++
++Each grouped adapter has block-diagonal identity weights and zero bias at initialization:
++
++\[
++A_{\rm raw}(z)=z,\qquad A_{\rm can}(z)=z.
++\]
++
++### Proposition 6 — branch preservation at initialization
++
++At initialization,
++
++\[
++Z=
++\begin{cases}
++Z_{\rm raw},&g=0,\\
++Z_{\rm can},&g=1.
++\end{cases}
++\]
++
++Therefore, introducing DCSPF does not perturb either selected coordinate representation before learning begins. This is a representation-level statement, not a guarantee of detector-level accuracy after training.
++
++---
++
++## 9. Parameter overhead
++
++For feature width \(C\), each grouped adapter maps \(2C\) channels to \(2C\) channels with two groups. It has
++
++\[
++2C^2+2C
++\]
++
++parameters. Two adapters have
++
++\[
++N_{\rm DCSPF}=4C^2+4C.
++\]
++
++At the repository's P2 fusion width \(C=128\),
++
++\[
++N_{\rm DCSPF}=66{,}048.
++\]
++
++The measured complete model counts are:
++
++- direct concatenation: \(11{,}205{,}570\);
++- corrected parameter-free SJPA: \(11{,}205{,}570\);
++- DCSPF-Guard: \(11{,}271{,}618\).
++
++Thus DCSPF adds approximately \(0.589\%\) parameters relative to direct concatenation.
++
++---
++
++## 10. Finite-family validation certificate
++
++Architecture alone cannot prove that a detector is more accurate. For a bounded, predeclared, per-image utility \(u\in[0,1]\), define paired differences
++
++\[
++D_i=u_i^{\rm candidate}-u_i^{\rm baseline}\in[-1,1].
++\]
++
++Suppose \(K\) candidate configurations are evaluated on \(n\) i.i.d. or exchangeable validation examples. For family-wise error probability \(\delta\), define
++
++\[
++\operatorname{LCB}_k
++=\widehat\Delta_k-
++\sqrt{\frac{2\log(K/\delta)}{n}},
++\qquad
++\widehat\Delta_k=\frac1n\sum_{i=1}^{n}D_{i,k}.
++\]
++
++### Proposition 7 — simultaneous lower confidence bound
++
++With probability at least \(1-\delta\),
++
++\[
++\mathbb E[D_k]\geq\operatorname{LCB}_k
++\]
++
++simultaneously for every candidate \(k\in\{1,\ldots,K\}\).
++
++### Proof
++
++Since \(D_i\in[-1,1]\), Hoeffding's inequality gives
++
++\[
++\Pr\left(\widehat\Delta_k-\mathbb E[D_k]\geq t\right)
++\leq e^{-nt^2/2}.
++\]
++
++Set \(t=\sqrt{2\log(K/\delta)/n}\), making the failure probability at most \(\delta/K\) for each candidate. A union bound over \(K\) candidates gives total failure probability at most \(\delta\). ∎
++
++The repository utility `tools/certify_candidate.py` implements this rule. It must not be applied directly to a single aggregate mAP number; use a bounded per-image utility fixed before test inspection. Final mAP superiority should additionally be evaluated by paired image bootstrap on the untouched test set.
++
++---
++
++## 11. What the mathematics does and does not establish
++
++The derivations establish:
++
++- closed-form optimality of each orthogonal channel alignment;
++- bounded coherence and bounded reliability gain;
++- an explicit minimum-evidence condition for spatial shifts;
++- exact logical conditions for canonical routing and fallback;
++- identity preservation at adapter initialization;
++- a finite-sample validation certificate under stated assumptions.
++
++They do **not** prove that DCSPF has higher mAP than every competing network. That claim requires matched full-dataset experiments, multiple seeds, confidence intervals, and an untouched test set.
+--- a/RECHECK_V9_REPORT.md
++++ b/RECHECK_V9_REPORT.md
+@@ -0,0 +1,132 @@
++# Recheck v9: Corrected SJPA and DCSPF-Guard
++
++## Executive finding
++
++No implementation or theorem can guarantee that a learned detector is “100% better” on every seed, corruption, dataset, and metric. The recheck therefore used a stricter target:
++
++1. eliminate known statistical and comparison defects;
++2. preserve a fair backbone and initialization protocol;
++3. require reproducible numerical tests;
++4. add a mathematically explicit fallback candidate;
++5. separate proxy evidence from real VEDAI evidence.
++
++The corrected SJPA remains strongly better than direct concatenation in the controlled proxy. DCSPF-Guard slightly raises mean clean proxy performance and improves the simultaneous mixed-corruption mean relative to SJPA, but it does **not** significantly dominate SJPA across five seeds. DCSPF is therefore an experimental stronger candidate, not a proven replacement.
++
++## Newly discovered experimental defect
++
++The earlier proxy constructed methods sequentially from one random-number stream. Methods with different constructors consumed different random draws, so their downstream heads did not receive component-wise identical initialization. The v9 fair benchmark resets deterministic seeds independently for:
++
++- data generation;
++- fusion construction;
++- downstream head construction;
++- data-loader shuffling;
++- each corruption realization.
++
++This removes a hidden initialization confound.
++
++## Fair controlled proxy, five seeds
++
++| Method | Clean mean ± SD | Robust mean ± SD | Mixed corruption |
++|---|---:|---:|---:|
++| Direct concatenation | 0.37262 ± 0.06248 | 0.04584 ± 0.01099 | 0.01519 |
++| Corrected SJPA | 0.49638 ± 0.09389 | **0.26510 ± 0.05462** | 0.00347 |
++| DCSPF-Guard | **0.50449 ± 0.09028** | 0.26094 ± 0.05694 | 0.00839 |
++
++Paired DCSPF comparisons:
++
++| Comparison | Mean difference | Two-sided paired p | Seed wins |
++|---|---:|---:|---:|
++| Clean vs concatenation | +0.13186 | 0.02358 | 5/5 |
++| Robust vs concatenation | +0.21511 | 0.00171 | 5/5 |
++| Clean vs corrected SJPA | +0.00811 | 0.27645 | 3/5 |
++| Robust vs corrected SJPA | −0.00416 | 0.46576 | 2/5 |
++| Mixed vs corrected SJPA | +0.00492 | 0.22417 | 4/5 |
++
++Interpretation:
++
++- both corrected methods beat concatenation strongly in this proxy;
++- DCSPF has the highest clean mean;
++- corrected SJPA has the highest aggregate robustness mean;
++- DCSPF's advantage over SJPA is not statistically established;
++- neither method is proven superior on real VEDAI by these proxy values.
++
++## Threshold routing audit
++
++For the selected thresholds
++
++\[
++(\tau_c,\tau_t,\tau_d)=(0.35,0.60,0.80),
++\]
++
++mean canonical routing rates were:
++
++| Condition | Canonical route rate |
++|---|---:|
++| Clean | 0.9949 |
++| RGB noise | 1.0000 |
++| IR noise | 1.0000 |
++| Missing RGB | 1.0000 |
++| Missing IR | 1.0000 |
++| IR shift | 0.9349 |
++| Simultaneous mixed corruption | **0.0000** |
++
++The normalized coherence plus reliability-dominance guard detects the synthetic both-bad region that raw nuclear cross-correlation failed to identify. Noise can increase an unnormalized cross-covariance norm; normalizing by within-modality covariance energy is essential.
++
++## Production model audit
++
++| Model | Trainable parameters | Fusion parameters |
++|---|---:|---:|
++| Direct concatenation | 11,205,554 | 0 |
++| Corrected SJPA | 11,205,554 | 0 |
++| DCSPF-Guard | 11,271,602 | 66,048 |
++
++DCSPF overhead is approximately 0.589% of the direct-concatenation model.
++
++## Verification status
++
++- Full repository test suite: 105 tests after adding certificate tests.
++- Mathematical/numerical tests cover bounded coherence, identity initialization, guard logic, finite forward/backward values, corrected reliability statistics, and candidate certification.
++- All model YAML configurations construct and execute in the repository tests.
++- The corrected main comparison keeps the C3k2 backbone unchanged.
++
++## Novelty position
++
++Broad claims such as “the first alignment-and-reliability RGB–IR detector” are unsafe. Recent work already includes learned offset alignment with dynamic gating, uncertainty-aware fusion, distribution alignment, and reliability-guided expert routing.
++
++The narrower, defensible DCSPF contribution is:
++
++> A dual-coordinate RGB–IR fusion operator combining groupwise closed-form covariance/Procrustes canonicalization with bounded RV-style coherence, same-domain energy reliability, margin-certified shift acceptance, and deterministic evidence routing between canonical and raw coordinate experts.
++
++The strongest mathematical distinctions are:
++
++1. the channel transform is the closed-form optimizer of an orthogonal Procrustes problem rather than a learned attention alignment;
++2. the coherence statistic is explicitly normalized and proven bounded;
++3. spatial correction requires a quantified score margin over zero shift;
++4. the guard has an exact logical fallback region based on joint coherence/typicality and single-stream dominance;
++5. modality gain has a closed-form bound;
++6. the adapters preserve selected representations exactly at initialization;
++7. candidate deployment can be subjected to a family-wise Hoeffding lower-confidence certificate.
++
++## Required full experiment before a superiority claim
++
++Use the corrected SJPA and DCSPF YAMLs with:
++
++- identical C3k2 backbone;
++- same pretrained or random initialization policy;
++- component-wise saved initial weights;
++- at least five seeds;
++- 100 or more epochs with identical schedules;
++- no threshold selection on the test set;
++- mean ± SD for mAP50 and mAP50–95;
++- paired image bootstrap confidence intervals;
++- clean, natural day/night, missing-modality, noise, and spatial-shift tests;
++- latency, FLOPs, parameters, and peak memory;
++- ablations for Procrustes, coherence, typicality, dominance, spatial margin, and expert adapters.
++
++A valid strongest-result statement requires the proposal's lower confidence bound to exceed every baseline on the primary metric. Until then, write “achieved the highest mean in the controlled proxy,” not “is 100% better.”
++
++## Recommended manuscript positioning
++
++- **Main conservative model:** corrected parameter-free SJPA, because it has the highest robust proxy mean and no parameter increase.
++- **Experimental enhanced model:** DCSPF-Guard, because it has the highest clean proxy mean and a meaningful mixed-failure fallback, but has not significantly beaten corrected SJPA.
++- Do not merge their results or choose the better model after viewing final test outcomes. Predeclare the primary model and metric before the final test.
+--- a/VALIDATION/recheck_v9/benchmark_dcspf_fair_proxy.py
++++ b/VALIDATION/recheck_v9/benchmark_dcspf_fair_proxy.py
+@@ -0,0 +1,213 @@
++from __future__ import annotations
++
++"""Ten-seed component-wise controlled proxy for concat, corrected SJPA and DCSPF.
++
++This is a synthetic mechanism test, not a substitute for a full VEDAI run.
++All random streams are reset independently for data, fusion construction, head
++construction, loader order and corruptions.
++"""
++
++import json
++import random
++import sys
++from pathlib import Path
++
++import numpy as np
++import torch
++import torch.nn.functional as F
++from scipy.stats import ttest_rel
++
++ROOT = Path(__file__).resolve().parents[2]
++sys.path.insert(0, str(ROOT / "VALIDATION"))
++
++from benchmark_realistic_proxy import FastSJPAProxy, corrupt  # noqa: E402
++from test_scid_fast import Concat, Data, Model, Proj, map50  # noqa: E402
++
++
++def set_seed(value: int) -> None:
++    random.seed(value)
++    np.random.seed(value)
++    torch.manual_seed(value)
++
++
++class DCSPFProxy(FastSJPAProxy):
++    def __init__(self, channels: int, coherence_tau=0.35, typicality_tau=0.6, dominance_tau=0.8):
++        super().__init__(channels)
++        self.canonical_projection = self.p
++        self.raw_projection = Proj(2 * channels, channels)
++        self.coherence_tau = coherence_tau
++        self.typicality_tau = typicality_tau
++        self.dominance_tau = dominance_tau
++
++    def coherence(self, a, b):
++        batch, channels, height, width = a.shape
++        tokens = height * width
++        x = a.reshape(batch, self.g, self.d, tokens).transpose(-1, -2)
++        y = b.reshape(batch, self.g, self.d, tokens).transpose(-1, -2)
++        x = x - x.mean(-2, keepdim=True)
++        y = y - y.mean(-2, keepdim=True)
++        cxy = x.transpose(-1, -2) @ y / (tokens - 1)
++        cxx = x.transpose(-1, -2) @ x / (tokens - 1)
++        cyy = y.transpose(-1, -2) @ y / (tokens - 1)
++        numerator = torch.linalg.matrix_norm(cxy, ord="fro").sum(-1)
++        denominator = (
++            torch.linalg.matrix_norm(cxx, ord="fro").sum(-1)
++            * torch.linalg.matrix_norm(cyy, ord="fro").sum(-1)
++            + 1e-8
++        ).sqrt()
++        return (numerator / denominator).clamp(0, 1).view(-1, 1, 1, 1)
++
++    def forward(self, rgb, ir, aux=False):
++        a = self.transform(rgb, self.mr, self.wr)
++        b = self.transform(ir, self.mi, self.wi)
++        batch, channels, height, width = a.shape
++        tokens = height * width
++        a = (
++            (a.reshape(batch, self.g, self.d, tokens).transpose(-1, -2) @ self.q)
++            .transpose(-1, -2)
++            .reshape(batch, channels, height, width)
++        )
++        energy_r = a.square().mean((1, 2, 3), keepdim=True)
++        energy_i = b.square().mean((1, 2, 3), keepdim=True)
++        dev_r = torch.log(energy_r + 1e-4).abs()
++        dev_i = torch.log(energy_i + 1e-4).abs()
++        anomaly = torch.maximum(dev_r, dev_i)
++        b, searched = self._search(a, b, anomaly.flatten() < self.tau)
++        probability = torch.cat((-self.gamma * dev_r, -self.gamma * dev_i), 1).softmax(1)
++        trigger = torch.sigmoid(self.k * (anomaly - self.tau))
++        canonical = torch.cat(
++            (
++                (1 - trigger) * a + trigger * (2 * probability[:, :1]).sqrt() * a,
++                (1 - trigger) * b + trigger * (2 * probability[:, 1:]).sqrt() * b,
++            ),
++            1,
++        )
++        coherence = self.coherence(a, b)
++        typicality = torch.minimum(dev_r, dev_i)
++        dominance = (probability[:, :1] - probability[:, 1:]).abs()
++        gate = (
++            ((coherence >= self.coherence_tau) & (typicality <= self.typicality_tau))
++            | (dominance >= self.dominance_tau)
++        ).to(a.dtype)
++        output = gate * self.canonical_projection(canonical) + (1 - gate) * self.raw_projection(torch.cat((rgb, ir), 1))
++        diagnostics = {"gate": gate, "searched": searched}
++        return (output, diagnostics) if aux else output
++
++
++def build(name, train_subset, run_seed):
++    set_seed(10_000 + run_seed)
++    if name == "concat":
++        return Concat(8)
++    if name == "sjpa":
++        model = FastSJPAProxy(8)
++        model.fit(train_subset)
++        return model
++    if name == "dcspf":
++        model = DCSPFProxy(8)
++        model.fit(train_subset)
++        return model
++    raise KeyError(name)
++
++
++def run(name, run_seed, epochs=10):
++    set_seed(20_000 + run_seed)
++    dataset = Data(1400, seed=1800 + run_seed)
++    train_subset = torch.utils.data.Subset(dataset, range(1050))
++    test_subset = torch.utils.data.Subset(dataset, range(1050, 1400))
++    fusion = build(name, train_subset, run_seed)
++    set_seed(30_000 + run_seed)
++    model = Model(fusion, 8, 5)
++    optimizer = torch.optim.AdamW(model.parameters(), 2.5e-3, weight_decay=1e-4)
++    loader = torch.utils.data.DataLoader(
++        train_subset, batch_size=64, shuffle=True,
++        generator=torch.Generator().manual_seed(40_000 + run_seed),
++    )
++    schedule = ["clean", "clean", "clean", "rgb_noise", "ir_noise", "missing_rgb", "missing_ir", "ir_shift", "mixed"]
++    step = 0
++    for _ in range(epochs):
++        model.train()
++        for rgb, ir, label, box in loader:
++            rgb, ir = corrupt(rgb, ir, schedule[(step + run_seed * 7) % len(schedule)], 50_000 + run_seed * 10_000 + step)
++            step += 1
++            optimizer.zero_grad()
++            logits, pred_box, _ = model(rgb, ir, True)
++            loss = F.cross_entropy(logits, label) + 3 * F.smooth_l1_loss(pred_box, box)
++            loss.backward()
++            torch.nn.utils.clip_grad_norm_(model.parameters(), 5)
++            optimizer.step()
++
++    model.eval()
++    metrics, gate_rates = {}, {}
++    test_loader = torch.utils.data.DataLoader(test_subset, batch_size=100)
++    conditions = ["clean", "basis_rotate", "rgb_noise", "ir_noise", "missing_rgb", "missing_ir", "ir_shift", "mixed"]
++    with torch.no_grad():
++        for condition in conditions:
++            all_logits, all_pred, all_label, all_box, all_gate = [], [], [], [], []
++            for rgb, ir, label, box in test_loader:
++                rgb, ir = corrupt(rgb, ir, condition, 60_000 + run_seed)
++                logits, pred_box, diagnostics = model(rgb, ir, True)
++                all_logits.append(logits)
++                all_pred.append(pred_box)
++                all_label.append(label)
++                all_box.append(box)
++                all_gate.append(diagnostics.get("gate", torch.zeros(rgb.shape[0], 1, 1, 1)).flatten())
++            metrics[condition] = map50(torch.cat(all_logits), torch.cat(all_pred), torch.cat(all_label), torch.cat(all_box), 5)
++            gate_rates[condition] = float(torch.cat(all_gate).mean())
++    return metrics, gate_rates, sum(parameter.numel() for parameter in model.parameters())
++
++
++def summarize(raw, gates, params):
++    robust_conditions = ["rgb_noise", "ir_noise", "missing_rgb", "missing_ir", "ir_shift", "mixed"]
++    return {
++        "params": params,
++        "clean_mean": float(np.mean([item["clean"] for item in raw])),
++        "clean_std": float(np.std([item["clean"] for item in raw], ddof=1)),
++        "robust_mean": float(np.mean([np.mean([item[c] for c in robust_conditions]) for item in raw])),
++        "robust_std": float(np.std([np.mean([item[c] for c in robust_conditions]) for item in raw], ddof=1)),
++        "conditions": {c: float(np.mean([item[c] for item in raw])) for c in raw[0]},
++        "gate": {c: float(np.mean([item[c] for item in gates])) for c in gates[0]},
++    }
++
++
++def main():
++    torch.set_num_threads(1)
++    torch.use_deterministic_algorithms(True)
++    names = ["concat", "sjpa", "dcspf"]
++    seeds = list(range(10))
++    raw, gates, output = {}, {}, {}
++    params = {}
++    for name in names:
++        raw[name], gates[name] = [], []
++        for run_seed in seeds:
++            metrics, gate, count = run(name, run_seed)
++            raw[name].append(metrics)
++            gates[name].append(gate)
++            params[name] = count
++        output[name] = summarize(raw[name], gates[name], params[name])
++
++    robust_conditions = ["rgb_noise", "ir_noise", "missing_rgb", "missing_ir", "ir_shift", "mixed"]
++    output["paired"] = {}
++    utility = {
++        "clean": lambda item: item["clean"],
++        "robust": lambda item: np.mean([item[c] for c in robust_conditions]),
++        "mixed": lambda item: item["mixed"],
++    }
++    for metric_name, function in utility.items():
++        candidate = np.array([function(item) for item in raw["dcspf"]])
++        for baseline in ["concat", "sjpa"]:
++            reference = np.array([function(item) for item in raw[baseline]])
++            _, p_value = ttest_rel(candidate, reference)
++            output["paired"][f"{metric_name}_vs_{baseline}"] = {
++                "mean_difference": float((candidate - reference).mean()),
++                "two_sided_p": float(p_value),
++                "wins": int((candidate > reference).sum()),
++                "ties": int((candidate == reference).sum()),
++            }
++    output["raw"] = raw
++    destination = Path(__file__).with_name("dcspf_fair_proxy_10seed.json")
++    destination.write_text(json.dumps(output, indent=2) + "\n", encoding="utf-8")
++    print(json.dumps(output, indent=2))
++
++
++if __name__ == "__main__":
++    main()
+--- a/VALIDATION/recheck_v9/dcspf_threshold_ablation_5seed.json
++++ b/VALIDATION/recheck_v9/dcspf_threshold_ablation_5seed.json
+@@ -0,0 +1,137 @@
++{
++  "concat": {
++    "params": 4673,
++    "clean_mean": 0.3726249723854633,
++    "clean_std": 0.06248139482996472,
++    "robust_mean": 0.0458388292993526,
++    "robust_std": 0.010991659840460492,
++    "conditions": {
++      "clean": 0.3726249723854633,
++      "basis_rotate": 0.0101238984207517,
++      "rgb_noise": 0.012622439084944445,
++      "ir_noise": 0.020113227530867035,
++      "missing_rgb": 0.05040848002249563,
++      "missing_ir": 0.07025705125005399,
++      "ir_shift": 0.1064381610350262,
++      "mixed": 0.015193616872728324
++    },
++    "gate": {
++      "clean": 0.0,
++      "basis_rotate": 0.0,
++      "rgb_noise": 0.0,
++      "ir_noise": 0.0,
++      "missing_rgb": 0.0,
++      "missing_ir": 0.0,
++      "ir_shift": 0.0,
++      "mixed": 0.0
++    }
++  },
++  "sjpa": {
++    "params": 4673,
++    "clean_mean": 0.4963760421828763,
++    "clean_std": 0.09388794155838205,
++    "robust_mean": 0.26510256657771647,
++    "robust_std": 0.054615175967947384,
++    "conditions": {
++      "clean": 0.4963760421828763,
++      "basis_rotate": 0.028798080693742473,
++      "rgb_noise": 0.24500945610515007,
++      "ir_noise": 0.35994805449154244,
++      "missing_rgb": 0.18506936081205858,
++      "missing_ir": 0.3390386874645194,
++      "ir_shift": 0.4580837972303603,
++      "mixed": 0.0034660433626679463
++    },
++    "gate": {
++      "clean": 0.0,
++      "basis_rotate": 0.0,
++      "rgb_noise": 0.0,
++      "ir_noise": 0.0,
++      "missing_rgb": 0.0,
++      "missing_ir": 0.0,
++      "ir_shift": 0.0,
++      "mixed": 0.0
++    }
++  },
++  "dcp_c35_e60_d80": {
++    "params": 4817,
++    "clean_mean": 0.5090738528147155,
++    "clean_std": 0.08620036638312358,
++    "robust_mean": 0.26220437579823724,
++    "robust_std": 0.05619863088411783,
++    "conditions": {
++      "clean": 0.5090738528147155,
++      "basis_rotate": 0.02637479755190068,
++      "rgb_noise": 0.24515988381169734,
++      "ir_noise": 0.337833679305814,
++      "missing_rgb": 0.19938908442914344,
++      "missing_ir": 0.3238492787542798,
++      "ir_shift": 0.45694010781016514,
++      "mixed": 0.010054220678323619
++    },
++    "gate": {
++      "clean": 0.994857132434845,
++      "basis_rotate": 0.994857132434845,
++      "rgb_noise": 1.0,
++      "ir_noise": 1.0,
++      "missing_rgb": 1.0,
++      "missing_ir": 1.0,
++      "ir_shift": 0.9348571538925171,
++      "mixed": 0.0
++    }
++  },
++  "dcp_c40_e60_d80": {
++    "params": 4817,
++    "clean_mean": 0.5012915750059578,
++    "clean_std": 0.09712996130196723,
++    "robust_mean": 0.26045869531742805,
++    "robust_std": 0.0590155114159041,
++    "conditions": {
++      "clean": 0.5012915750059578,
++      "basis_rotate": 0.02626885118806066,
++      "rgb_noise": 0.24626641702731575,
++      "ir_noise": 0.34028027880075606,
++      "missing_rgb": 0.1935691267235585,
++      "missing_ir": 0.31657831087555455,
++      "ir_shift": 0.45662596280161705,
++      "mixed": 0.009432075675766243
++    },
++    "gate": {
++      "clean": 0.9731428503990174,
++      "basis_rotate": 0.9788571476936341,
++      "rgb_noise": 1.0,
++      "ir_noise": 1.0,
++      "missing_rgb": 1.0,
++      "missing_ir": 1.0,
++      "ir_shift": 0.9028571486473084,
++      "mixed": 0.0
++    }
++  },
++  "dcp_c35_e50_d80": {
++    "params": 4817,
++    "clean_mean": 0.508727101250999,
++    "clean_std": 0.08670669687247515,
++    "robust_mean": 0.26191408029168667,
++    "robust_std": 0.056406664877107486,
++    "conditions": {
++      "clean": 0.508727101250999,
++      "basis_rotate": 0.026308661735826532,
++      "rgb_noise": 0.24409140850736938,
++      "ir_noise": 0.33786797485337816,
++      "missing_rgb": 0.1987367367344403,
++      "missing_ir": 0.3239188722043081,
++      "ir_shift": 0.456819403808744,
++      "mixed": 0.010050085641879763
++    },
++    "gate": {
++      "clean": 0.994857132434845,
++      "basis_rotate": 0.994857132434845,
++      "rgb_noise": 1.0,
++      "ir_noise": 1.0,
++      "missing_rgb": 1.0,
++      "missing_ir": 1.0,
++      "ir_shift": 0.9348571538925171,
++      "mixed": 0.0
++    }
++  }
++}--- a/VALIDATION/recheck_v9/fair_component_seeded_5seed.json
++++ b/VALIDATION/recheck_v9/fair_component_seeded_5seed.json
+@@ -0,0 +1,243 @@
++{
++  "concat": {
++    "params": 4673,
++    "clean_mean": 0.3726249723854633,
++    "clean_std": 0.06248139482996472,
++    "robust_mean": 0.0458388292993526,
++    "robust_std": 0.010991659840460492,
++    "conditions": {
++      "clean": 0.3726249723854633,
++      "basis_rotate": 0.0101238984207517,
++      "rgb_noise": 0.012622439084944445,
++      "ir_noise": 0.020113227530867035,
++      "missing_rgb": 0.05040848002249563,
++      "missing_ir": 0.07025705125005399,
++      "ir_shift": 0.1064381610350262,
++      "mixed": 0.015193616872728324
++    }
++  },
++  "sjpa": {
++    "params": 4673,
++    "clean_mean": 0.4963760421828763,
++    "clean_std": 0.09388794155838205,
++    "robust_mean": 0.26510256657771647,
++    "robust_std": 0.054615175967947384,
++    "conditions": {
++      "clean": 0.4963760421828763,
++      "basis_rotate": 0.028798080693742473,
++      "rgb_noise": 0.24500945610515007,
++      "ir_noise": 0.35994805449154244,
++      "missing_rgb": 0.18506936081205858,
++      "missing_ir": 0.3390386874645194,
++      "ir_shift": 0.4580837972303603,
++      "mixed": 0.0034660433626679463
++    }
++  },
++  "dcspf": {
++    "params": 4817,
++    "clean_mean": 0.5044856110415543,
++    "clean_std": 0.09027576993769364,
++    "robust_mean": 0.26094429316432244,
++    "robust_std": 0.056942839489967506,
++    "conditions": {
++      "clean": 0.5044856110415543,
++      "basis_rotate": 0.025175853015591797,
++      "rgb_noise": 0.24326331620240887,
++      "ir_noise": 0.34667600214451627,
++      "missing_rgb": 0.19058129007746794,
++      "missing_ir": 0.3227619514481131,
++      "ir_shift": 0.4539977251850199,
++      "mixed": 0.008385473928408934
++    }
++  },
++  "paired": {
++    "clean_vs_concat": {
++      "mean_difference": 0.131860638656091,
++      "two_sided_p": 0.023576454672354814,
++      "wins": 5
++    },
++    "clean_vs_sjpa": {
++      "mean_difference": 0.008109568858677974,
++      "two_sided_p": 0.2764463118812688,
++      "wins": 3
++    },
++    "robust_vs_concat": {
++      "mean_difference": 0.21510546386496987,
++      "two_sided_p": 0.0017071856961767254,
++      "wins": 5
++    },
++    "robust_vs_sjpa": {
++      "mean_difference": -0.0041582734133939646,
++      "two_sided_p": 0.46576063731731054,
++      "wins": 2
++    },
++    "mixed_vs_concat": {
++      "mean_difference": -0.00680814294431939,
++      "two_sided_p": 0.2361597113831219,
++      "wins": 2
++    },
++    "mixed_vs_sjpa": {
++      "mean_difference": 0.004919430565740989,
++      "two_sided_p": 0.2241742668020667,
++      "wins": 4
++    }
++  },
++  "raw": {
++    "concat": [
++      {
++        "clean": 0.46701433599782033,
++        "basis_rotate": 0.005627062459174131,
++        "rgb_noise": 0.0017524803239088952,
++        "ir_noise": 0.017628314323750977,
++        "missing_rgb": 0.036792775529336394,
++        "missing_ir": 0.0785059884776999,
++        "ir_shift": 0.08175651435077401,
++        "mixed": 0.005600047692564128
++      },
++      {
++        "clean": 0.30021150093319793,
++        "basis_rotate": 0.008093055748572737,
++        "rgb_noise": 0.0007007010933087561,
++        "ir_noise": 0.022604923070184933,
++        "missing_rgb": 0.051213957835061094,
++        "missing_ir": 0.04417674451631478,
++        "ir_shift": 0.0947925097855484,
++        "mixed": 0.0061901740696178684
++      },
++      {
++        "clean": 0.33819476805767146,
++        "basis_rotate": 0.01950156607619709,
++        "rgb_noise": 0.023766384583201995,
++        "ir_noise": 0.00460869820345467,
++        "missing_rgb": 0.08126715783143229,
++        "missing_ir": 0.10375265962885383,
++        "ir_shift": 0.11316448218628432,
++        "mixed": 0.02883980375099514
++      },
++      {
++        "clean": 0.36886108065541484,
++        "basis_rotate": 0.005479097563879045,
++        "rgb_noise": 0.017983604126914424,
++        "ir_noise": 0.012599891905680777,
++        "missing_rgb": 0.04841716654124632,
++        "missing_ir": 0.04833659390941637,
++        "ir_shift": 0.09258718700006967,
++        "mixed": 0.020755396655184933
++      },
++      {
++        "clean": 0.38884317628321174,
++        "basis_rotate": 0.0119187102559355,
++        "rgb_noise": 0.01890902529738815,
++        "ir_noise": 0.04312431015126382,
++        "missing_rgb": 0.034351342375402064,
++        "missing_ir": 0.07651326971798503,
++        "ir_shift": 0.14989011185245452,
++        "mixed": 0.01458266219527955
++      }
++    ],
++    "sjpa": [
++      {
++        "clean": 0.6490570311904997,
++        "basis_rotate": 0.011822160408506449,
++        "rgb_noise": 0.3647930034960935,
++        "ir_noise": 0.442288274612185,
++        "missing_rgb": 0.2981983848927995,
++        "missing_ir": 0.4400354851658618,
++        "ir_shift": 0.6034744380609562,
++        "mixed": 0.0012989131417965789
++      },
++      {
++        "clean": 0.5120436845754617,
++        "basis_rotate": 0.03101320325237953,
++        "rgb_noise": 0.20313629374073638,
++        "ir_noise": 0.38145086136909345,
++        "missing_rgb": 0.14066953366056165,
++        "missing_ir": 0.3888825710140186,
++        "ir_shift": 0.4693865871138886,
++        "mixed": 0.0
++      },
++      {
++        "clean": 0.46818463556630263,
++        "basis_rotate": 0.06076150251032766,
++        "rgb_noise": 0.25536960071647663,
++        "ir_noise": 0.295339187114899,
++        "missing_rgb": 0.2275512948684347,
++        "missing_ir": 0.2704477838711383,
++        "ir_shift": 0.4108514608027636,
++        "mixed": 0.007676503560998362
++      },
++      {
++        "clean": 0.4496002581735368,
++        "basis_rotate": 0.005436220181836421,
++        "rgb_noise": 0.20975850042812083,
++        "ir_noise": 0.3490959365084353,
++        "missing_rgb": 0.15258834999858562,
++        "missing_ir": 0.3067030068612167,
++        "ir_shift": 0.41939536023292046,
++        "mixed": 0.006471358048703542
++      },
++      {
++        "clean": 0.4029946014085805,
++        "basis_rotate": 0.03495731711566231,
++        "rgb_noise": 0.1919898821443232,
++        "ir_noise": 0.3315660128530994,
++        "missing_rgb": 0.1063392406399114,
++        "missing_ir": 0.28912459041036137,
++        "ir_shift": 0.3873111399412724,
++        "mixed": 0.0018834420618412488
++      }
++    ],
++    "dcspf": [
++      {
++        "clean": 0.6420917207860886,
++        "basis_rotate": 0.009244147322026181,
++        "rgb_noise": 0.3485952928943295,
++        "ir_noise": 0.46642401957392493,
++        "missing_rgb": 0.2794085961919285,
++        "missing_ir": 0.4606522633441652,
++        "ir_shift": 0.6004231101395002,
++        "mixed": 0.007120128405366163
++      },
++      {
++        "clean": 0.5357371625695666,
++        "basis_rotate": 0.041843223394771326,
++        "rgb_noise": 0.201917634937389,
++        "ir_noise": 0.3592006511287901,
++        "missing_rgb": 0.15393621129240098,
++        "missing_ir": 0.3345477302206211,
++        "ir_shift": 0.47828056907525146,
++        "mixed": 0.0030756319771053074
++      },
++      {
++        "clean": 0.4694423228497485,
++        "basis_rotate": 0.04545595429854173,
++        "rgb_noise": 0.2279284817142695,
++        "ir_noise": 0.2735020213448845,
++        "missing_rgb": 0.1815598030520694,
++        "missing_ir": 0.2519526057293627,
++        "ir_shift": 0.39634547844792056,
++        "mixed": 0.010091465070018065
++      },
++      {
++        "clean": 0.4729732148710314,
++        "basis_rotate": 0.006027361411203419,
++        "rgb_noise": 0.2027306167247028,
++        "ir_noise": 0.3375250775761507,
++        "missing_rgb": 0.16478851932683417,
++        "missing_ir": 0.3104085473742472,
++        "ir_shift": 0.4097115176690572,
++        "mixed": 0.0026716926188146764
++      },
++      {
++        "clean": 0.4021836341313362,
++        "basis_rotate": 0.02330857865141633,
++        "rgb_noise": 0.23514455474135362,
++        "ir_noise": 0.2967282410988311,
++        "missing_rgb": 0.1732133205241066,
++        "missing_ir": 0.2562486105721691,
++        "ir_shift": 0.3852279505933697,
++        "mixed": 0.018968451570740463
++      }
++    ]
++  }
++}--- a/VALIDATION/recheck_v9/model_parameter_audit.json
++++ b/VALIDATION/recheck_v9/model_parameter_audit.json
+@@ -0,0 +1,34 @@
++{
++  "dual_concat": {
++    "config": "etfnet_dualstream_noCAFEM_noTGF.yaml",
++    "parameters_total": 11205570,
++    "parameters_trainable": 11205554,
++    "fusion_layers": []
++  },
++  "corrected_sjpa": {
++    "config": "etfnet_P2_C3k2_SJPA_TR_Corrected.yaml",
++    "parameters_total": 11205570,
++    "parameters_trainable": 11205554,
++    "fusion_layers": [
++      {
++        "index": 9,
++        "type": "SJPA",
++        "parameters": 0
++      }
++    ]
++  },
++  "dcspf_guard": {
++    "config": "etfnet_P2_C3k2_DCSPF_Guard.yaml",
++    "parameters_total": 11271618,
++    "parameters_trainable": 11271602,
++    "fusion_layers": [
++      {
++        "index": 9,
++        "type": "DCSPF",
++        "parameters": 66048
++      }
++    ],
++    "overhead_vs_concat": 66048,
++    "overhead_percent_vs_concat": 0.5894211539439761
++  }
++}
+--- a/VALIDATION/recheck_v9/original_rng_stream_proxy_5seed_10epoch.json
++++ b/VALIDATION/recheck_v9/original_rng_stream_proxy_5seed_10epoch.json
+@@ -0,0 +1,1311 @@
++{
++  "scope": "synthetic controlled proxy; not a public-dataset accuracy claim",
++  "shift_model": "zero-padded translation; no circular wraparound",
++  "seeds": [
++    0,
++    1,
++    2,
++    3,
++    4
++  ],
++  "epochs": 10,
++  "threads": 1,
++  "summary": {
++    "concat": {
++      "clean": {
++        "mean": 0.35584271734017225,
++        "sample_std": 0.047069813691430595
++      },
++      "basis_rotate": {
++        "mean": 0.012333972299460025,
++        "sample_std": 0.011679945472099584
++      },
++      "rgb_noise": {
++        "mean": 0.0061734498974001005,
++        "sample_std": 0.0052580493996592075
++      },
++      "ir_noise": {
++        "mean": 0.0486124510185584,
++        "sample_std": 0.035244680208030274
++      },
++      "missing_rgb": {
++        "mean": 0.047106964003612514,
++        "sample_std": 0.027183068205303276
++      },
++      "missing_ir": {
++        "mean": 0.06710137562385032,
++        "sample_std": 0.02510990075631603
++      },
++      "ir_shift": {
++        "mean": 0.09260843399236526,
++        "sample_std": 0.022076533286748017
++      },
++      "mixed": {
++        "mean": 0.018262670097274357,
++        "sample_std": 0.013140226814558722
++      },
++      "robust_mean": {
++        "mean": 0.04664422410551017,
++        "sample_std": 0.012177194525604342
++      }
++    },
++    "tgf": {
++      "clean": {
++        "mean": 0.26306812798662543,
++        "sample_std": 0.033427722236919685
++      },
++      "basis_rotate": {
++        "mean": 0.014589246160334421,
++        "sample_std": 0.01492001712606702
++      },
++      "rgb_noise": {
++        "mean": 0.03421919829127568,
++        "sample_std": 0.01115033152346801
++      },
++      "ir_noise": {
++        "mean": 0.03940586682220375,
++        "sample_std": 0.023194486700001436
++      },
++      "missing_rgb": {
++        "mean": 0.04621147301498526,
++        "sample_std": 0.03097033273919134
++      },
++      "missing_ir": {
++        "mean": 0.07868766186755784,
++        "sample_std": 0.04147402248643551
++      },
++      "ir_shift": {
++        "mean": 0.09066823392771962,
++        "sample_std": 0.03266963139993548
++      },
++      "mixed": {
++        "mean": 0.011983916939559086,
++        "sample_std": 0.007184969611788539
++      },
++      "robust_mean": {
++        "mean": 0.050196058477216865,
++        "sample_std": 0.010008920578137062
++      }
++    },
++    "pbtr": {
++      "clean": {
++        "mean": 0.2575065679854356,
++        "sample_std": 0.09698921759756264
++      },
++      "basis_rotate": {
++        "mean": 0.020228168150015578,
++        "sample_std": 0.027172292831403023
++      },
++      "rgb_noise": {
++        "mean": 0.01819788652030358,
++        "sample_std": 0.011191629849759105
++      },
++      "ir_noise": {
++        "mean": 0.025568880580261206,
++        "sample_std": 0.021408801497227598
++      },
++      "missing_rgb": {
++        "mean": 0.04588659980756485,
++        "sample_std": 0.03075588937274553
++      },
++      "missing_ir": {
++        "mean": 0.10117092007065334,
++        "sample_std": 0.051891033967286164
++      },
++      "ir_shift": {
++        "mean": 0.0979524303338598,
++        "sample_std": 0.04048217509848
++      },
++      "mixed": {
++        "mean": 0.011119150019517752,
++        "sample_std": 0.006508839381556754
++      },
++      "robust_mean": {
++        "mean": 0.04998264455536009,
++        "sample_std": 0.018337663283128535
++      }
++    },
++    "goci": {
++      "clean": {
++        "mean": 0.3582235119764207,
++        "sample_std": 0.04911600434104176
++      },
++      "basis_rotate": {
++        "mean": 0.008968910460159973,
++        "sample_std": 0.004141405321748696
++      },
++      "rgb_noise": {
++        "mean": 0.005948716955320956,
++        "sample_std": 0.004221502418274645
++      },
++      "ir_noise": {
++        "mean": 0.03059736977009119,
++        "sample_std": 0.015846687304109368
++      },
++      "missing_rgb": {
++        "mean": 0.03720333253369272,
++        "sample_std": 0.01708652028524422
++      },
++      "missing_ir": {
++        "mean": 0.07321445122709903,
++        "sample_std": 0.024341822680773215
++      },
++      "ir_shift": {
++        "mean": 0.09536209761094239,
++        "sample_std": 0.05365568962764022
++      },
++      "mixed": {
++        "mean": 0.008273984454196416,
++        "sample_std": 0.002584214087472076
++      },
++      "robust_mean": {
++        "mean": 0.04176665875855712,
++        "sample_std": 0.009727596556465065
++      }
++    },
++    "sjpa": {
++      "clean": {
++        "mean": 0.4615014872340263,
++        "sample_std": 0.08594896012481114
++      },
++      "basis_rotate": {
++        "mean": 0.01848195051418804,
++        "sample_std": 0.010413122040325715
++      },
++      "rgb_noise": {
++        "mean": 0.2839280511292728,
++        "sample_std": 0.09851093941721945
++      },
++      "ir_noise": {
++        "mean": 0.33895608924851467,
++        "sample_std": 0.0591798517994412
++      },
++      "missing_rgb": {
++        "mean": 0.23243312260411986,
++        "sample_std": 0.07339405723444144
++      },
++      "missing_ir": {
++        "mean": 0.3109813766888142,
++        "sample_std": 0.05942654900095319
++      },
++      "ir_shift": {
++        "mean": 0.43831021955950816,
++        "sample_std": 0.09044804676116357
++      },
++      "mixed": {
++        "mean": 0.000254729055468334,
++        "sample_std": 0.0002580496871559109
++      },
++      "robust_mean": {
++        "mean": 0.267477264714283,
++        "sample_std": 0.048066436024833376
++      }
++    }
++  },
++  "paired_tests": {
++    "clean": {
++      "strongest_baseline": "goci",
++      "mean_difference": 0.10327797525760547,
++      "t_statistic": 5.818924415425075,
++      "one_sided_p": 0.0021713930560205976
++    },
++    "rgb_noise": {
++      "strongest_baseline": "tgf",
++      "mean_difference": 0.24970885283799707,
++      "t_statistic": 6.033230779229205,
++      "one_sided_p": 0.0019023479722382495
++    },
++    "ir_noise": {
++      "strongest_baseline": "concat",
++      "mean_difference": 0.2903436382299563,
++      "t_statistic": 9.383645066655912,
++      "one_sided_p": 0.000359293000065956
++    },
++    "missing_rgb": {
++      "strongest_baseline": "concat",
++      "mean_difference": 0.18532615860050733,
++      "t_statistic": 7.186536696709902,
++      "one_sided_p": 0.0009930322573270388
++    },
++    "missing_ir": {
++      "strongest_baseline": "pbtr",
++      "mean_difference": 0.2098104566181609,
++      "t_statistic": 8.458648820050911,
++      "one_sided_p": 0.0005351766451953148
++    },
++    "ir_shift": {
++      "strongest_baseline": "pbtr",
++      "mean_difference": 0.34035778922564836,
++      "t_statistic": 7.542915488661987,
++      "one_sided_p": 0.0008274004024791645
++    },
++    "mixed": {
++      "strongest_baseline": "concat",
++      "mean_difference": -0.018007941041806023,
++      "t_statistic": -3.1091885639119394,
++      "one_sided_p": 0.9820499589282888
++    }
++  },
++  "raw": {
++    "concat": [
++      {
++        "clean": {
++          "accuracy": 0.991428554058075,
++          "mean_iou": 0.48780274391174316,
++          "proxy_map50": 0.4112665886132779
++        },
++        "basis_rotate": {
++          "accuracy": 0.27142858505249023,
++          "mean_iou": 0.20366285741329193,
++          "proxy_map50": 0.0037429516925624197
++        },
++        "rgb_noise": {
++          "accuracy": 0.7285714149475098,
++          "mean_iou": 0.13903556764125824,
++          "proxy_map50": 0.0007297416123569243
++        },
++        "ir_noise": {
++          "accuracy": 0.9171428680419922,
++          "mean_iou": 0.2618600130081177,
++          "proxy_map50": 0.010845887165148158
++        },
++        "missing_rgb": {
++          "accuracy": 0.7857142686843872,
++          "mean_iou": 0.26757392287254333,
++          "proxy_map50": 0.03840311310245602
++        },
++        "missing_ir": {
++          "accuracy": 0.9942857027053833,
++          "mean_iou": 0.2951573431491852,
++          "proxy_map50": 0.059463527264999774
++        },
++        "ir_shift": {
++          "accuracy": 0.991428554058075,
++          "mean_iou": 0.3650537133216858,
++          "proxy_map50": 0.12568272908656647
++        },
++        "mixed": {
++          "accuracy": 0.8285714387893677,
++          "mean_iou": 0.19713066518306732,
++          "proxy_map50": 0.0050872773350738
++        }
++      },
++      {
++        "clean": {
++          "accuracy": 0.9971428513526917,
++          "mean_iou": 0.44011035561561584,
++          "proxy_map50": 0.2870384819055035
++        },
++        "basis_rotate": {
++          "accuracy": 0.2571428716182709,
++          "mean_iou": 0.26448097825050354,
++          "proxy_map50": 0.011589676074541453
++        },
++        "rgb_noise": {
++          "accuracy": 0.6399999856948853,
++          "mean_iou": 0.18342487514019012,
++          "proxy_map50": 0.007297936360448407
++        },
++        "ir_noise": {
++          "accuracy": 0.8914285898208618,
++          "mean_iou": 0.3198176920413971,
++          "proxy_map50": 0.0747681398852365
++        },
++        "missing_rgb": {
++          "accuracy": 0.7971428632736206,
++          "mean_iou": 0.26534566283226013,
++          "proxy_map50": 0.02668215528153011
++        },
++        "missing_ir": {
++          "accuracy": 0.9885714054107666,
++          "mean_iou": 0.29458290338516235,
++          "proxy_map50": 0.05817445558757025
++        },
++        "ir_shift": {
++          "accuracy": 0.9971428513526917,
++          "mean_iou": 0.3581934869289398,
++          "proxy_map50": 0.09827092488896191
++        },
++        "mixed": {
++          "accuracy": 0.7714285850524902,
++          "mean_iou": 0.24948745965957642,
++          "proxy_map50": 0.024546038054602287
++        }
++      },
++      {
++        "clean": {
++          "accuracy": 1.0,
++          "mean_iou": 0.4668077826499939,
++          "proxy_map50": 0.3854833493848605
++        },
++        "basis_rotate": {
++          "accuracy": 0.2085714340209961,
++          "mean_iou": 0.31188416481018066,
++          "proxy_map50": 0.01332477395387498
++        },
++        "rgb_noise": {
++          "accuracy": 0.845714271068573,
++          "mean_iou": 0.21437719464302063,
++          "proxy_map50": 0.010684361284581449
++        },
++        "ir_noise": {
++          "accuracy": 0.7742857336997986,
++          "mean_iou": 0.29651695489883423,
++          "proxy_map50": 0.04822132734771313
++        },
++        "missing_rgb": {
++          "accuracy": 0.7971428632736206,
++          "mean_iou": 0.30601799488067627,
++          "proxy_map50": 0.08948664093511047
++        },
++        "missing_ir": {
++          "accuracy": 0.8485714197158813,
++          "mean_iou": 0.2633114755153656,
++          "proxy_map50": 0.03924383036169099
++        },
++        "ir_shift": {
++          "accuracy": 0.9971428513526917,
++          "mean_iou": 0.3347558379173279,
++          "proxy_map50": 0.07293014014845789
++        },
++        "mixed": {
++          "accuracy": 0.8514285683631897,
++          "mean_iou": 0.27949345111846924,
++          "proxy_map50": 0.03409028293105057
++        }
++      },
++      {
++        "clean": {
++          "accuracy": 0.991428554058075,
++          "mean_iou": 0.4367985725402832,
++          "proxy_map50": 0.3429336766558107
++        },
++        "basis_rotate": {
++          "accuracy": 0.3400000035762787,
++          "mean_iou": 0.2283545732498169,
++          "proxy_map50": 0.0017494053941344942
++        },
++        "rgb_noise": {
++          "accuracy": 0.8171428442001343,
++          "mean_iou": 0.11790004372596741,
++          "proxy_map50": 0.0006313582295152771
++        },
++        "ir_noise": {
++          "accuracy": 0.9057142734527588,
++          "mean_iou": 0.26383262872695923,
++          "proxy_map50": 0.017289600312369723
++        },
++        "missing_rgb": {
++          "accuracy": 0.7571428418159485,
++          "mean_iou": 0.2579747438430786,
++          "proxy_map50": 0.02346800170680019
++        },
++        "missing_ir": {
++          "accuracy": 0.9171428680419922,
++          "mean_iou": 0.29852133989334106,
++          "proxy_map50": 0.07168743625822382
++        },
++        "ir_shift": {
++          "accuracy": 0.9942857027053833,
++          "mean_iou": 0.34631580114364624,
++          "proxy_map50": 0.07179485854922496
++        },
++        "mixed": {
++          "accuracy": 0.8514285683631897,
++          "mean_iou": 0.15356117486953735,
++          "proxy_map50": 0.00412133327525434
++        }
++      },
++      {
++        "clean": {
++          "accuracy": 1.0,
++          "mean_iou": 0.47348228096961975,
++          "proxy_map50": 0.35249149014140857
++        },
++        "basis_rotate": {
++          "accuracy": 0.24285714328289032,
++          "mean_iou": 0.2529672086238861,
++          "proxy_map50": 0.03126305438218678
++        },
++        "rgb_noise": {
++          "accuracy": 0.7742857336997986,
++          "mean_iou": 0.21200156211853027,
++          "proxy_map50": 0.011523852000098445
++        },
++        "ir_noise": {
++          "accuracy": 0.8342857360839844,
++          "mean_iou": 0.32532745599746704,
++          "proxy_map50": 0.09193730038232448
++        },
++        "missing_rgb": {
++          "accuracy": 0.800000011920929,
++          "mean_iou": 0.2873302102088928,
++          "proxy_map50": 0.05749490899216579
++        },
++        "missing_ir": {
++          "accuracy": 0.9342857003211975,
++          "mean_iou": 0.320404589176178,
++          "proxy_map50": 0.10693762864676679
++        },
++        "ir_shift": {
++          "accuracy": 1.0,
++          "mean_iou": 0.3672035038471222,
++          "proxy_map50": 0.0943635172886151
++        },
++        "mixed": {
++          "accuracy": 0.8485714197158813,
++          "mean_iou": 0.23870374262332916,
++          "proxy_map50": 0.0234684188903908
++        }
++      }
++    ],
++    "tgf": [
++      {
++        "clean": {
++          "accuracy": 0.9885714054107666,
++          "mean_iou": 0.4419620633125305,
++          "proxy_map50": 0.2595933877372262
++        },
++        "basis_rotate": {
++          "accuracy": 0.26571428775787354,
++          "mean_iou": 0.21595320105552673,
++          "proxy_map50": 0.00486255397853729
++        },
++        "rgb_noise": {
++          "accuracy": 0.6200000047683716,
++          "mean_iou": 0.26246774196624756,
++          "proxy_map50": 0.03344153337617331
++        },
++        "ir_noise": {
++          "accuracy": 0.9485714435577393,
++          "mean_iou": 0.2931608259677887,
++          "proxy_map50": 0.03289603292706854
++        },
++        "missing_rgb": {
++          "accuracy": 0.5057142972946167,
++          "mean_iou": 0.2450842261314392,
++          "proxy_map50": 0.015129653308467573
++        },
++        "missing_ir": {
++          "accuracy": 0.8828571438789368,
++          "mean_iou": 0.2755267024040222,
++          "proxy_map50": 0.046283806824651275
++        },
++        "ir_shift": {
++          "accuracy": 0.9714285731315613,
++          "mean_iou": 0.32005995512008667,
++          "proxy_map50": 0.04943128765250084
++        },
++        "mixed": {
++          "accuracy": 0.6628571152687073,
++          "mean_iou": 0.20324571430683136,
++          "proxy_map50": 0.023430896287095923
++        }
++      },
++      {
++        "clean": {
++          "accuracy": 0.9971428513526917,
++          "mean_iou": 0.45609238743782043,
++          "proxy_map50": 0.23640090408503073
++        },
++        "basis_rotate": {
++          "accuracy": 0.18285714089870453,
++          "mean_iou": 0.2822623550891876,
++          "proxy_map50": 0.00498563803049257
++        },
++        "rgb_noise": {
++          "accuracy": 0.808571457862854,
++          "mean_iou": 0.24762402474880219,
++          "proxy_map50": 0.021853067229519386
++        },
++        "ir_noise": {
++          "accuracy": 0.8171428442001343,
++          "mean_iou": 0.3063921630382538,
++          "proxy_map50": 0.05980212212838064
++        },
++        "missing_rgb": {
++          "accuracy": 0.7771428823471069,
++          "mean_iou": 0.2769193947315216,
++          "proxy_map50": 0.02798139153273606
++        },
++        "missing_ir": {
++          "accuracy": 0.9657142758369446,
++          "mean_iou": 0.3200434148311615,
++          "proxy_map50": 0.09239173126477428
++        },
++        "ir_shift": {
++          "accuracy": 0.9971428513526917,
++          "mean_iou": 0.3952113687992096,
++          "proxy_map50": 0.1205473868779765
++        },
++        "mixed": {
++          "accuracy": 0.7457143068313599,
++          "mean_iou": 0.21151907742023468,
++          "proxy_map50": 0.010130599711812814
++        }
++      },
++      {
++        "clean": {
++          "accuracy": 0.991428554058075,
++          "mean_iou": 0.4471973478794098,
++          "proxy_map50": 0.22873237296843857
++        },
++        "basis_rotate": {
++          "accuracy": 0.11142857372760773,
++          "mean_iou": 0.3644159436225891,
++          "proxy_map50": 0.037053982985757426
++        },
++        "rgb_noise": {
++          "accuracy": 0.7771428823471069,
++          "mean_iou": 0.2845810055732727,
++          "proxy_map50": 0.04368982812791579
++        },
++        "ir_noise": {
++          "accuracy": 0.831428587436676,
++          "mean_iou": 0.29007959365844727,
++          "proxy_map50": 0.028396721926805885
++        },
++        "missing_rgb": {
++          "accuracy": 0.7428571581840515,
++          "mean_iou": 0.2959984540939331,
++          "proxy_map50": 0.060207028283769046
++        },
++        "missing_ir": {
++          "accuracy": 0.8799999952316284,
++          "mean_iou": 0.30811238288879395,
++          "proxy_map50": 0.041179216693045056
++        },
++        "ir_shift": {
++          "accuracy": 1.0,
++          "mean_iou": 0.37910693883895874,
++          "proxy_map50": 0.10963575528282174
++        },
++        "mixed": {
++          "accuracy": 0.654285728931427,
++          "mean_iou": 0.21357005834579468,
++          "proxy_map50": 0.007294001341156127
++        }
++      },
++      {
++        "clean": {
++          "accuracy": 0.991428554058075,
++          "mean_iou": 0.4592548608779907,
++          "proxy_map50": 0.2796736322359522
++        },
++        "basis_rotate": {
++          "accuracy": 0.16857142746448517,
++          "mean_iou": 0.28124552965164185,
++          "proxy_map50": 0.00317283840652067
++        },
++        "rgb_noise": {
++          "accuracy": 0.7828571200370789,
++          "mean_iou": 0.29225224256515503,
++          "proxy_map50": 0.04717681341616254
++        },
++        "ir_noise": {
++          "accuracy": 0.7542856931686401,
++          "mean_iou": 0.18906903266906738,
++          "proxy_map50": 0.009965344218434959
++        },
++        "missing_rgb": {
++          "accuracy": 0.8514285683631897,
++          "mean_iou": 0.31401529908180237,
++          "proxy_map50": 0.09318459899332102
++        },
++        "missing_ir": {
++          "accuracy": 0.6485714316368103,
++          "mean_iou": 0.29784101247787476,
++          "proxy_map50": 0.07035003774894046
++        },
++        "ir_shift": {
++          "accuracy": 0.991428554058075,
++          "mean_iou": 0.35554325580596924,
++          "proxy_map50": 0.11223312451727536
++        },
++        "mixed": {
++          "accuracy": 0.7942857146263123,
++          "mean_iou": 0.16883213818073273,
++          "proxy_map50": 0.005172665336340453
++        }
++      },
++      {
++        "clean": {
++          "accuracy": 1.0,
++          "mean_iou": 0.4837109446525574,
++          "proxy_map50": 0.31094034290647937
++        },
++        "basis_rotate": {
++          "accuracy": 0.3742857277393341,
++          "mean_iou": 0.3213033974170685,
++          "proxy_map50": 0.02287121740036415
++        },
++        "rgb_noise": {
++          "accuracy": 0.8514285683631897,
++          "mean_iou": 0.2632928490638733,
++          "proxy_map50": 0.024934749306607384
++        },
++        "ir_noise": {
++          "accuracy": 0.9428571462631226,
++          "mean_iou": 0.3377581834793091,
++          "proxy_map50": 0.06596911291032874
++        },
++        "missing_rgb": {
++          "accuracy": 0.8514285683631897,
++          "mean_iou": 0.30860522389411926,
++          "proxy_map50": 0.03455469295663262
++        },
++        "missing_ir": {
++          "accuracy": 0.9828571677207947,
++          "mean_iou": 0.36470985412597656,
++          "proxy_map50": 0.14323351680637808
++        },
++        "ir_shift": {
++          "accuracy": 1.0,
++          "mean_iou": 0.3866848349571228,
++          "proxy_map50": 0.06149361530802364
++        },
++        "mixed": {
++          "accuracy": 0.7857142686843872,
++          "mean_iou": 0.22434557974338531,
++          "proxy_map50": 0.013891422021390116
++        }
++      }
++    ],
++    "pbtr": [
++      {
++        "clean": {
++          "accuracy": 1.0,
++          "mean_iou": 0.4059029817581177,
++          "proxy_map50": 0.25033669237745076
++        },
++        "basis_rotate": {
++          "accuracy": 0.24285714328289032,
++          "mean_iou": 0.24193158745765686,
++          "proxy_map50": 0.007082499391879146
++        },
++        "rgb_noise": {
++          "accuracy": 0.854285717010498,
++          "mean_iou": 0.25436726212501526,
++          "proxy_map50": 0.01019575590197214
++        },
++        "ir_noise": {
++          "accuracy": 0.977142870426178,
++          "mean_iou": 0.26688092947006226,
++          "proxy_map50": 0.012108973557100656
++        },
++        "missing_rgb": {
++          "accuracy": 0.6828571557998657,
++          "mean_iou": 0.27281424403190613,
++          "proxy_map50": 0.044695281089609004
++        },
++        "missing_ir": {
++          "accuracy": 0.991428554058075,
++          "mean_iou": 0.26620909571647644,
++          "proxy_map50": 0.05010635217828756
++        },
++        "ir_shift": {
++          "accuracy": 1.0,
++          "mean_iou": 0.31498101353645325,
++          "proxy_map50": 0.05104817796194022
++        },
++        "mixed": {
++          "accuracy": 0.7942857146263123,
++          "mean_iou": 0.19752196967601776,
++          "proxy_map50": 0.007592403689714587
++        }
++      },
++      {
++        "clean": {
++          "accuracy": 1.0,
++          "mean_iou": 0.36916059255599976,
++          "proxy_map50": 0.16623547894503213
++        },
++        "basis_rotate": {
++          "accuracy": 0.30000001192092896,
++          "mean_iou": 0.21951590478420258,
++          "proxy_map50": 0.00832598197892814
++        },
++        "rgb_noise": {
++          "accuracy": 0.8657143115997314,
++          "mean_iou": 0.27304399013519287,
++          "proxy_map50": 0.02119784477313198
++        },
++        "ir_noise": {
++          "accuracy": 0.8914285898208618,
++          "mean_iou": 0.2825144827365875,
++          "proxy_map50": 0.04715477481084933
++        },
++        "missing_rgb": {
++          "accuracy": 0.7685714364051819,
++          "mean_iou": 0.26489463448524475,
++          "proxy_map50": 0.054733420506552555
++        },
++        "missing_ir": {
++          "accuracy": 0.9885714054107666,
++          "mean_iou": 0.29316481947898865,
++          "proxy_map50": 0.08408057497796376
++        },
++        "ir_shift": {
++          "accuracy": 1.0,
++          "mean_iou": 0.3480592370033264,
++          "proxy_map50": 0.10303861993019599
++        },
++        "mixed": {
++          "accuracy": 0.6857143044471741,
++          "mean_iou": 0.22474054992198944,
++          "proxy_map50": 0.01460327811044743
++        }
++      },
++      {
++        "clean": {
++          "accuracy": 1.0,
++          "mean_iou": 0.4460441470146179,
++          "proxy_map50": 0.3267336435134439
++        },
++        "basis_rotate": {
++          "accuracy": 0.05428571254014969,
++          "mean_iou": 0.29939743876457214,
++          "proxy_map50": 0.014283722898204228
++        },
++        "rgb_noise": {
++          "accuracy": 0.8799999952316284,
++          "mean_iou": 0.3258681893348694,
++          "proxy_map50": 0.033626851520608916
++        },
++        "ir_noise": {
++          "accuracy": 0.9485714435577393,
++          "mean_iou": 0.3139118254184723,
++          "proxy_map50": 0.050275583313704186
++        },
++        "missing_rgb": {
++          "accuracy": 0.7885714173316956,
++          "mean_iou": 0.29530543088912964,
++          "proxy_map50": 0.09221659398201225
++        },
++        "missing_ir": {
++          "accuracy": 0.8600000143051147,
++          "mean_iou": 0.30370527505874634,
++          "proxy_map50": 0.11429308947511538
++        },
++        "ir_shift": {
++          "accuracy": 0.991428554058075,
++          "mean_iou": 0.36522385478019714,
++          "proxy_map50": 0.11674592669500725
++        },
++        "mixed": {
++          "accuracy": 0.8028571605682373,
++          "mean_iou": 0.25166940689086914,
++          "proxy_map50": 0.01972134105235664
++        }
++      },
++      {
++        "clean": {
++          "accuracy": 0.9971428513526917,
++          "mean_iou": 0.4868718087673187,
++          "proxy_map50": 0.38171894321620103
++        },
++        "basis_rotate": {
++          "accuracy": 0.24285714328289032,
++          "mean_iou": 0.250389039516449,
++          "proxy_map50": 0.0031416112972425846
++        },
++        "rgb_noise": {
++          "accuracy": 0.845714271068573,
++          "mean_iou": 0.2305658459663391,
++          "proxy_map50": 0.004751492343091747
++        },
++        "ir_noise": {
++          "accuracy": 0.9399999976158142,
++          "mean_iou": 0.25436151027679443,
++          "proxy_map50": 0.0048622398712361
++        },
++        "missing_rgb": {
++          "accuracy": 0.8057143092155457,
++          "mean_iou": 0.2585075795650482,
++          "proxy_map50": 0.025976513301773058
++        },
++        "missing_ir": {
++          "accuracy": 0.9742857217788696,
++          "mean_iou": 0.38332685828208923,
++          "proxy_map50": 0.18429554157478234
++        },
++        "ir_shift": {
++          "accuracy": 0.9857142567634583,
++          "mean_iou": 0.4090600609779358,
++          "proxy_map50": 0.15254073327871442
++        },
++        "mixed": {
++          "accuracy": 0.7657142877578735,
++          "mean_iou": 0.20296549797058105,
++          "proxy_map50": 0.0027010041421502867
++        }
++      },
++      {
++        "clean": {
++          "accuracy": 0.7714285850524902,
++          "mean_iou": 0.3458673655986786,
++          "proxy_map50": 0.1625080818750499
++        },
++        "basis_rotate": {
++          "accuracy": 0.30571427941322327,
++          "mean_iou": 0.268169105052948,
++          "proxy_map50": 0.06830702518382378
++        },
++        "rgb_noise": {
++          "accuracy": 0.8371428847312927,
++          "mean_iou": 0.2257169932126999,
++          "proxy_map50": 0.021217488062713112
++        },
++        "ir_noise": {
++          "accuracy": 0.8828571438789368,
++          "mean_iou": 0.22114057838916779,
++          "proxy_map50": 0.013442831348415757
++        },
++        "missing_rgb": {
++          "accuracy": 0.488571435213089,
++          "mean_iou": 0.22619317471981049,
++          "proxy_map50": 0.011811190157877379
++        },
++        "missing_ir": {
++          "accuracy": 0.7571428418159485,
++          "mean_iou": 0.27411070466041565,
++          "proxy_map50": 0.07307904214711775
++        },
++        "ir_shift": {
++          "accuracy": 0.8857142925262451,
++          "mean_iou": 0.29998329281806946,
++          "proxy_map50": 0.0663886938034411
++        },
++        "mixed": {
++          "accuracy": 0.7685714364051819,
++          "mean_iou": 0.17324966192245483,
++          "proxy_map50": 0.010977723102919824
++        }
++      }
++    ],
++    "goci": [
++      {
++        "clean": {
++          "accuracy": 0.9942857027053833,
++          "mean_iou": 0.44927045702934265,
++          "proxy_map50": 0.3579895449213503
++        },
++        "basis_rotate": {
++          "accuracy": 0.13428571820259094,
++          "mean_iou": 0.2572064995765686,
++          "proxy_map50": 0.004841228021680552
++        },
++        "rgb_noise": {
++          "accuracy": 0.6628571152687073,
++          "mean_iou": 0.13519372045993805,
++          "proxy_map50": 0.0010259691152139667
++        },
++        "ir_noise": {
++          "accuracy": 0.8428571224212646,
++          "mean_iou": 0.3144662380218506,
++          "proxy_map50": 0.050578214307168246
++        },
++        "missing_rgb": {
++          "accuracy": 0.6885714530944824,
++          "mean_iou": 0.2286289930343628,
++          "proxy_map50": 0.022528324285519263
++        },
++        "missing_ir": {
++          "accuracy": 0.7914285659790039,
++          "mean_iou": 0.31314611434936523,
++          "proxy_map50": 0.09479612353956095
++        },
++        "ir_shift": {
++          "accuracy": 0.9800000190734863,
++          "mean_iou": 0.37981945276260376,
++          "proxy_map50": 0.16999198779672947
++        },
++        "mixed": {
++          "accuracy": 0.7799999713897705,
++          "mean_iou": 0.20204275846481323,
++          "proxy_map50": 0.0069611741820171215
++        }
++      },
++      {
++        "clean": {
++          "accuracy": 0.9971428513526917,
++          "mean_iou": 0.40999293327331543,
++          "proxy_map50": 0.28139459951802626
++        },
++        "basis_rotate": {
++          "accuracy": 0.3285714387893677,
++          "mean_iou": 0.2512494623661041,
++          "proxy_map50": 0.013554867951556854
++        },
++        "rgb_noise": {
++          "accuracy": 0.7400000095367432,
++          "mean_iou": 0.1738526076078415,
++          "proxy_map50": 0.007134486361385722
++        },
++        "ir_noise": {
++          "accuracy": 0.8428571224212646,
++          "mean_iou": 0.1982160359621048,
++          "proxy_map50": 0.01076473535644087
++        },
++        "missing_rgb": {
++          "accuracy": 0.6228571534156799,
++          "mean_iou": 0.25035780668258667,
++          "proxy_map50": 0.030481605833508757
++        },
++        "missing_ir": {
++          "accuracy": 0.9742857217788696,
++          "mean_iou": 0.2953585684299469,
++          "proxy_map50": 0.08909819737967166
++        },
++        "ir_shift": {
++          "accuracy": 0.9885714054107666,
++          "mean_iou": 0.3276573121547699,
++          "proxy_map50": 0.071128106155246
++        },
++        "mixed": {
++          "accuracy": 0.7971428632736206,
++          "mean_iou": 0.1830301582813263,
++          "proxy_map50": 0.011540718649915297
++        }
++      },
++      {
++        "clean": {
++          "accuracy": 1.0,
++          "mean_iou": 0.48035791516304016,
++          "proxy_map50": 0.409490320617823
++        },
++        "basis_rotate": {
++          "accuracy": 0.06857142597436905,
++          "mean_iou": 0.332153856754303,
++          "proxy_map50": 0.009441540744442058
++        },
++        "rgb_noise": {
++          "accuracy": 0.8057143092155457,
++          "mean_iou": 0.25942355394363403,
++          "proxy_map50": 0.012245984330667392
++        },
++        "ir_noise": {
++          "accuracy": 0.7828571200370789,
++          "mean_iou": 0.24829894304275513,
++          "proxy_map50": 0.02230116946444303
++        },
++        "missing_rgb": {
++          "accuracy": 0.7914285659790039,
++          "mean_iou": 0.3000572621822357,
++          "proxy_map50": 0.06361825840631194
++        },
++        "missing_ir": {
++          "accuracy": 0.9800000190734863,
++          "mean_iou": 0.26325100660324097,
++          "proxy_map50": 0.042053578618633125
++        },
++        "ir_shift": {
++          "accuracy": 0.9971428513526917,
++          "mean_iou": 0.3417581617832184,
++          "proxy_map50": 0.06985089834777193
++        },
++        "mixed": {
++          "accuracy": 0.8171428442001343,
++          "mean_iou": 0.23393221199512482,
++          "proxy_map50": 0.010568007762946165
++        }
++      },
++      {
++        "clean": {
++          "accuracy": 1.0,
++          "mean_iou": 0.44156572222709656,
++          "proxy_map50": 0.35130000994557
++        },
++        "basis_rotate": {
++          "accuracy": 0.34857141971588135,
++          "mean_iou": 0.2238696962594986,
++          "proxy_map50": 0.004638259738991015
++        },
++        "rgb_noise": {
++          "accuracy": 0.7628571391105652,
++          "mean_iou": 0.20254167914390564,
++          "proxy_map50": 0.005832986320096911
++        },
++        "ir_noise": {
++          "accuracy": 0.8199999928474426,
++          "mean_iou": 0.2428915798664093,
++          "proxy_map50": 0.027259190877129837
++        },
++        "missing_rgb": {
++          "accuracy": 0.8600000143051147,
++          "mean_iou": 0.2642781734466553,
++          "proxy_map50": 0.04461693317655728
++        },
++        "missing_ir": {
++          "accuracy": 0.9257143139839172,
++          "mean_iou": 0.293626606464386,
++          "proxy_map50": 0.051880295515434695
++        },
++        "ir_shift": {
++          "accuracy": 0.9885714054107666,
++          "mean_iou": 0.35682231187820435,
++          "proxy_map50": 0.12981526922562686
++        },
++        "mixed": {
++          "accuracy": 0.7971428632736206,
++          "mean_iou": 0.17444656789302826,
++          "proxy_map50": 0.0062775959039755
++        }
++      },
++      {
++        "clean": {
++          "accuracy": 1.0,
++          "mean_iou": 0.4834097623825073,
++          "proxy_map50": 0.3909430848793344
++        },
++        "basis_rotate": {
++          "accuracy": 0.39714285731315613,
++          "mean_iou": 0.2529599964618683,
++          "proxy_map50": 0.012368655844129384
++        },
++        "rgb_noise": {
++          "accuracy": 0.8057143092155457,
++          "mean_iou": 0.19087177515029907,
++          "proxy_map50": 0.00350415864924079
++        },
++        "ir_noise": {
++          "accuracy": 0.854285717010498,
++          "mean_iou": 0.29616403579711914,
++          "proxy_map50": 0.042083538845274
++        },
++        "missing_rgb": {
++          "accuracy": 0.7771428823471069,
++          "mean_iou": 0.283596009016037,
++          "proxy_map50": 0.024771540966566356
++        },
++        "missing_ir": {
++          "accuracy": 0.9971428513526917,
++          "mean_iou": 0.30438145995140076,
++          "proxy_map50": 0.08824406108219472
++        },
++        "ir_shift": {
++          "accuracy": 1.0,
++          "mean_iou": 0.3529023826122284,
++          "proxy_map50": 0.036024226529337684
++        },
++        "mixed": {
++          "accuracy": 0.8399999737739563,
++          "mean_iou": 0.21811293065547943,
++          "proxy_map50": 0.006022425772127999
++        }
++      }
++    ],
++    "sjpa": [
++      {
++        "clean": {
++          "accuracy": 1.0,
++          "mean_iou": 0.5062364935874939,
++          "proxy_map50": 0.43094226837799543
++        },
++        "basis_rotate": {
++          "accuracy": 0.1599999964237213,
++          "mean_iou": 0.32300347089767456,
++          "proxy_map50": 0.02277379946801691
++        },
++        "rgb_noise": {
++          "accuracy": 0.9142857193946838,
++          "mean_iou": 0.40352270007133484,
++          "proxy_map50": 0.1889241960791425
++        },
++        "ir_noise": {
++          "accuracy": 0.9971428513526917,
++          "mean_iou": 0.4762459993362427,
++          "proxy_map50": 0.3171981075933451
++        },
++        "missing_rgb": {
++          "accuracy": 0.7771428823471069,
++          "mean_iou": 0.35767024755477905,
++          "proxy_map50": 0.14378014004531214
++        },
++        "missing_ir": {
++          "accuracy": 0.9942857027053833,
++          "mean_iou": 0.46719351410865784,
++          "proxy_map50": 0.32956358890529885
++        },
++        "ir_shift": {
++          "accuracy": 1.0,
++          "mean_iou": 0.4994893968105316,
++          "proxy_map50": 0.4182241197038802
++        },
++        "mixed": {
++          "accuracy": 0.6285714507102966,
++          "mean_iou": 0.09827474504709244,
++          "proxy_map50": 0.0001303780964797914
++        }
++      },
++      {
++        "clean": {
++          "accuracy": 0.9971428513526917,
++          "mean_iou": 0.45262351632118225,
++          "proxy_map50": 0.34213972300957296
++        },
++        "basis_rotate": {
++          "accuracy": 0.24571429193019867,
++          "mean_iou": 0.284519225358963,
++          "proxy_map50": 0.01579666508557275
++        },
++        "rgb_noise": {
++          "accuracy": 0.8914285898208618,
++          "mean_iou": 0.3846515715122223,
++          "proxy_map50": 0.18270282519333056
++        },
++        "ir_noise": {
++          "accuracy": 0.9971428513526917,
++          "mean_iou": 0.41633546352386475,
++          "proxy_map50": 0.2703091567677851
++        },
++        "missing_rgb": {
++          "accuracy": 0.8485714197158813,
++          "mean_iou": 0.3639950454235077,
++          "proxy_map50": 0.1896983869523019
++        },
++        "missing_ir": {
++          "accuracy": 0.9971428513526917,
++          "mean_iou": 0.41623708605766296,
++          "proxy_map50": 0.2563021016301163
++        },
++        "ir_shift": {
++          "accuracy": 0.9942857027053833,
++          "mean_iou": 0.43972069025039673,
++          "proxy_map50": 0.3015818872378663
++        },
++        "mixed": {
++          "accuracy": 0.7171428799629211,
++          "mean_iou": 0.0871138945221901,
++          "proxy_map50": 5.070993914807302e-05
++        }
++      },
++      {
++        "clean": {
++          "accuracy": 1.0,
++          "mean_iou": 0.5627533197402954,
++          "proxy_map50": 0.552275044268185
++        },
++        "basis_rotate": {
++          "accuracy": 0.07999999821186066,
++          "mean_iou": 0.3996517062187195,
++          "proxy_map50": 0.032461366153539305
++        },
++        "rgb_noise": {
++          "accuracy": 0.9257143139839172,
++          "mean_iou": 0.503572404384613,
++          "proxy_map50": 0.41567204252731393
++        },
++        "ir_noise": {
++          "accuracy": 0.9971428513526917,
++          "mean_iou": 0.4595145881175995,
++          "proxy_map50": 0.30535913460897973
++        },
++        "missing_rgb": {
++          "accuracy": 0.8199999928474426,
++          "mean_iou": 0.4719683825969696,
++          "proxy_map50": 0.3387110662805518
++        },
++        "missing_ir": {
++          "accuracy": 0.9942857027053833,
++          "mean_iou": 0.42435985803604126,
++          "proxy_map50": 0.25430921625242175
++        },
++        "ir_shift": {
++          "accuracy": 1.0,
++          "mean_iou": 0.5434908866882324,
++          "proxy_map50": 0.5292892038931638
++        },
++        "mixed": {
++          "accuracy": 0.7828571200370789,
++          "mean_iou": 0.13439099490642548,
++          "proxy_map50": 0.0006472271230360735
++        }
++      },
++      {
++        "clean": {
++          "accuracy": 1.0,
++          "mean_iou": 0.49700039625167847,
++          "proxy_map50": 0.44428443883095065
++        },
++        "basis_rotate": {
++          "accuracy": 0.29428571462631226,
++          "mean_iou": 0.24787145853042603,
++          "proxy_map50": 0.003935580950207943
++        },
++        "rgb_noise": {
++          "accuracy": 0.9485714435577393,
++          "mean_iou": 0.44339439272880554,
++          "proxy_map50": 0.30876454298639094
++        },
++        "ir_noise": {
++          "accuracy": 1.0,
++          "mean_iou": 0.4613202214241028,
++          "proxy_map50": 0.3991933286025316
++        },
++        "missing_rgb": {
++          "accuracy": 0.9142857193946838,
++          "mean_iou": 0.41856998205184937,
++          "proxy_map50": 0.25618823087030806
++        },
++        "missing_ir": {
++          "accuracy": 0.9857142567634583,
++          "mean_iou": 0.4507862329483032,
++          "proxy_map50": 0.39783905968711725
++        },
++        "ir_shift": {
++          "accuracy": 1.0,
++          "mean_iou": 0.48607710003852844,
++          "proxy_map50": 0.43134699754216577
++        },
++        "mixed": {
++          "accuracy": 0.7657142877578735,
++          "mean_iou": 0.06592842191457748,
++          "proxy_map50": 5.963029218843172e-05
++        }
++      },
++      {
++        "clean": {
++          "accuracy": 1.0,
++          "mean_iou": 0.5442991256713867,
++          "proxy_map50": 0.5378659616834273
++        },
++        "basis_rotate": {
++          "accuracy": 0.4228571355342865,
++          "mean_iou": 0.2803976237773895,
++          "proxy_map50": 0.017442340913603294
++        },
++        "rgb_noise": {
++          "accuracy": 0.9514285922050476,
++          "mean_iou": 0.4660094380378723,
++          "proxy_map50": 0.3235766488601859
++        },
++        "ir_noise": {
++          "accuracy": 1.0,
++          "mean_iou": 0.4939573109149933,
++          "proxy_map50": 0.40272071866993187
++        },
++        "missing_rgb": {
++          "accuracy": 0.8999999761581421,
++          "mean_iou": 0.42103371024131775,
++          "proxy_map50": 0.23378778887212537
++        },
++        "missing_ir": {
++          "accuracy": 1.0,
++          "mean_iou": 0.4644697904586792,
++          "proxy_map50": 0.31689291696911703
++        },
++        "ir_shift": {
++          "accuracy": 1.0,
++          "mean_iou": 0.534743070602417,
++          "proxy_map50": 0.5111088894204648
++        },
++        "mixed": {
++          "accuracy": 0.800000011920929,
++          "mean_iou": 0.12430575489997864,
++          "proxy_map50": 0.00038569982648930016
++        }
++      }
++    ]
++  }
++}--- a/VALIDATION/sjpa_corrected_proxy_5seed_10epoch.json
++++ b/VALIDATION/sjpa_corrected_proxy_5seed_10epoch.json
+@@ -0,0 +1,1311 @@
++{
++  "scope": "synthetic controlled proxy; not a public-dataset accuracy claim",
++  "shift_model": "zero-padded translation; no circular wraparound",
++  "seeds": [
++    0,
++    1,
++    2,
++    3,
++    4
++  ],
++  "epochs": 10,
++  "threads": 1,
++  "summary": {
++    "concat": {
++      "clean": {
++        "mean": 0.35584271734017225,
++        "sample_std": 0.047069813691430595
++      },
++      "basis_rotate": {
++        "mean": 0.012333972299460025,
++        "sample_std": 0.011679945472099584
++      },
++      "rgb_noise": {
++        "mean": 0.0061734498974001005,
++        "sample_std": 0.0052580493996592075
++      },
++      "ir_noise": {
++        "mean": 0.0486124510185584,
++        "sample_std": 0.035244680208030274
++      },
++      "missing_rgb": {
++        "mean": 0.047106964003612514,
++        "sample_std": 0.027183068205303276
++      },
++      "missing_ir": {
++        "mean": 0.06710137562385032,
++        "sample_std": 0.02510990075631603
++      },
++      "ir_shift": {
++        "mean": 0.09260843399236526,
++        "sample_std": 0.022076533286748017
++      },
++      "mixed": {
++        "mean": 0.018262670097274357,
++        "sample_std": 0.013140226814558722
++      },
++      "robust_mean": {
++        "mean": 0.04664422410551017,
++        "sample_std": 0.012177194525604342
++      }
++    },
++    "tgf": {
++      "clean": {
++        "mean": 0.26306812798662543,
++        "sample_std": 0.033427722236919685
++      },
++      "basis_rotate": {
++        "mean": 0.014589246160334421,
++        "sample_std": 0.01492001712606702
++      },
++      "rgb_noise": {
++        "mean": 0.03421919829127568,
++        "sample_std": 0.01115033152346801
++      },
++      "ir_noise": {
++        "mean": 0.03940586682220375,
++        "sample_std": 0.023194486700001436
++      },
++      "missing_rgb": {
++        "mean": 0.04621147301498526,
++        "sample_std": 0.03097033273919134
++      },
++      "missing_ir": {
++        "mean": 0.07868766186755784,
++        "sample_std": 0.04147402248643551
++      },
++      "ir_shift": {
++        "mean": 0.09066823392771962,
++        "sample_std": 0.03266963139993548
++      },
++      "mixed": {
++        "mean": 0.011983916939559086,
++        "sample_std": 0.007184969611788539
++      },
++      "robust_mean": {
++        "mean": 0.050196058477216865,
++        "sample_std": 0.010008920578137062
++      }
++    },
++    "pbtr": {
++      "clean": {
++        "mean": 0.2575065679854356,
++        "sample_std": 0.09698921759756264
++      },
++      "basis_rotate": {
++        "mean": 0.020228168150015578,
++        "sample_std": 0.027172292831403023
++      },
++      "rgb_noise": {
++        "mean": 0.01819788652030358,
++        "sample_std": 0.011191629849759105
++      },
++      "ir_noise": {
++        "mean": 0.025568880580261206,
++        "sample_std": 0.021408801497227598
++      },
++      "missing_rgb": {
++        "mean": 0.04588659980756485,
++        "sample_std": 0.03075588937274553
++      },
++      "missing_ir": {
++        "mean": 0.10117092007065334,
++        "sample_std": 0.051891033967286164
++      },
++      "ir_shift": {
++        "mean": 0.0979524303338598,
++        "sample_std": 0.04048217509848
++      },
++      "mixed": {
++        "mean": 0.011119150019517752,
++        "sample_std": 0.006508839381556754
++      },
++      "robust_mean": {
++        "mean": 0.04998264455536009,
++        "sample_std": 0.018337663283128535
++      }
++    },
++    "goci": {
++      "clean": {
++        "mean": 0.3582235119764207,
++        "sample_std": 0.04911600434104176
++      },
++      "basis_rotate": {
++        "mean": 0.008968910460159973,
++        "sample_std": 0.004141405321748696
++      },
++      "rgb_noise": {
++        "mean": 0.005948716955320956,
++        "sample_std": 0.004221502418274645
++      },
++      "ir_noise": {
++        "mean": 0.03059736977009119,
++        "sample_std": 0.015846687304109368
++      },
++      "missing_rgb": {
++        "mean": 0.03720333253369272,
++        "sample_std": 0.01708652028524422
++      },
++      "missing_ir": {
++        "mean": 0.07321445122709903,
++        "sample_std": 0.024341822680773215
++      },
++      "ir_shift": {
++        "mean": 0.09536209761094239,
++        "sample_std": 0.05365568962764022
++      },
++      "mixed": {
++        "mean": 0.008273984454196416,
++        "sample_std": 0.002584214087472076
++      },
++      "robust_mean": {
++        "mean": 0.04176665875855712,
++        "sample_std": 0.009727596556465065
++      }
++    },
++    "sjpa": {
++      "clean": {
++        "mean": 0.4615014872340263,
++        "sample_std": 0.08594896012481114
++      },
++      "basis_rotate": {
++        "mean": 0.01848195051418804,
++        "sample_std": 0.010413122040325715
++      },
++      "rgb_noise": {
++        "mean": 0.2839280511292728,
++        "sample_std": 0.09851093941721945
++      },
++      "ir_noise": {
++        "mean": 0.33895608924851467,
++        "sample_std": 0.0591798517994412
++      },
++      "missing_rgb": {
++        "mean": 0.23243312260411986,
++        "sample_std": 0.07339405723444144
++      },
++      "missing_ir": {
++        "mean": 0.3109813766888142,
++        "sample_std": 0.05942654900095319
++      },
++      "ir_shift": {
++        "mean": 0.43831021955950816,
++        "sample_std": 0.09044804676116357
++      },
++      "mixed": {
++        "mean": 0.000254729055468334,
++        "sample_std": 0.0002580496871559109
++      },
++      "robust_mean": {
++        "mean": 0.267477264714283,
++        "sample_std": 0.048066436024833376
++      }
++    }
++  },
++  "paired_tests": {
++    "clean": {
++      "strongest_baseline": "goci",
++      "mean_difference": 0.10327797525760547,
++      "t_statistic": 5.818924415425075,
++      "one_sided_p": 0.0021713930560205976
++    },
++    "rgb_noise": {
++      "strongest_baseline": "tgf",
++      "mean_difference": 0.24970885283799707,
++      "t_statistic": 6.033230779229205,
++      "one_sided_p": 0.0019023479722382495
++    },
++    "ir_noise": {
++      "strongest_baseline": "concat",
++      "mean_difference": 0.2903436382299563,
++      "t_statistic": 9.383645066655912,
++      "one_sided_p": 0.000359293000065956
++    },
++    "missing_rgb": {
++      "strongest_baseline": "concat",
++      "mean_difference": 0.18532615860050733,
++      "t_statistic": 7.186536696709902,
++      "one_sided_p": 0.0009930322573270388
++    },
++    "missing_ir": {
++      "strongest_baseline": "pbtr",
++      "mean_difference": 0.2098104566181609,
++      "t_statistic": 8.458648820050911,
++      "one_sided_p": 0.0005351766451953148
++    },
++    "ir_shift": {
++      "strongest_baseline": "pbtr",
++      "mean_difference": 0.34035778922564836,
++      "t_statistic": 7.542915488661987,
++      "one_sided_p": 0.0008274004024791645
++    },
++    "mixed": {
++      "strongest_baseline": "concat",
++      "mean_difference": -0.018007941041806023,
++      "t_statistic": -3.1091885639119394,
++      "one_sided_p": 0.9820499589282888
++    }
++  },
++  "raw": {
++    "concat": [
++      {
++        "clean": {
++          "accuracy": 0.991428554058075,
++          "mean_iou": 0.48780274391174316,
++          "proxy_map50": 0.4112665886132779
++        },
++        "basis_rotate": {
++          "accuracy": 0.27142858505249023,
++          "mean_iou": 0.20366285741329193,
++          "proxy_map50": 0.0037429516925624197
++        },
++        "rgb_noise": {
++          "accuracy": 0.7285714149475098,
++          "mean_iou": 0.13903556764125824,
++          "proxy_map50": 0.0007297416123569243
++        },
++        "ir_noise": {
++          "accuracy": 0.9171428680419922,
++          "mean_iou": 0.2618600130081177,
++          "proxy_map50": 0.010845887165148158
++        },
++        "missing_rgb": {
++          "accuracy": 0.7857142686843872,
++          "mean_iou": 0.26757392287254333,
++          "proxy_map50": 0.03840311310245602
++        },
++        "missing_ir": {
++          "accuracy": 0.9942857027053833,
++          "mean_iou": 0.2951573431491852,
++          "proxy_map50": 0.059463527264999774
++        },
++        "ir_shift": {
++          "accuracy": 0.991428554058075,
++          "mean_iou": 0.3650537133216858,
++          "proxy_map50": 0.12568272908656647
++        },
++        "mixed": {
++          "accuracy": 0.8285714387893677,
++          "mean_iou": 0.19713066518306732,
++          "proxy_map50": 0.0050872773350738
++        }
++      },
++      {
++        "clean": {
++          "accuracy": 0.9971428513526917,
++          "mean_iou": 0.44011035561561584,
++          "proxy_map50": 0.2870384819055035
++        },
++        "basis_rotate": {
++          "accuracy": 0.2571428716182709,
++          "mean_iou": 0.26448097825050354,
++          "proxy_map50": 0.011589676074541453
++        },
++        "rgb_noise": {
++          "accuracy": 0.6399999856948853,
++          "mean_iou": 0.18342487514019012,
++          "proxy_map50": 0.007297936360448407
++        },
++        "ir_noise": {
++          "accuracy": 0.8914285898208618,
++          "mean_iou": 0.3198176920413971,
++          "proxy_map50": 0.0747681398852365
++        },
++        "missing_rgb": {
++          "accuracy": 0.7971428632736206,
++          "mean_iou": 0.26534566283226013,
++          "proxy_map50": 0.02668215528153011
++        },
++        "missing_ir": {
++          "accuracy": 0.9885714054107666,
++          "mean_iou": 0.29458290338516235,
++          "proxy_map50": 0.05817445558757025
++        },
++        "ir_shift": {
++          "accuracy": 0.9971428513526917,
++          "mean_iou": 0.3581934869289398,
++          "proxy_map50": 0.09827092488896191
++        },
++        "mixed": {
++          "accuracy": 0.7714285850524902,
++          "mean_iou": 0.24948745965957642,
++          "proxy_map50": 0.024546038054602287
++        }
++      },
++      {
++        "clean": {
++          "accuracy": 1.0,
++          "mean_iou": 0.4668077826499939,
++          "proxy_map50": 0.3854833493848605
++        },
++        "basis_rotate": {
++          "accuracy": 0.2085714340209961,
++          "mean_iou": 0.31188416481018066,
++          "proxy_map50": 0.01332477395387498
++        },
++        "rgb_noise": {
++          "accuracy": 0.845714271068573,
++          "mean_iou": 0.21437719464302063,
++          "proxy_map50": 0.010684361284581449
++        },
++        "ir_noise": {
++          "accuracy": 0.7742857336997986,
++          "mean_iou": 0.29651695489883423,
++          "proxy_map50": 0.04822132734771313
++        },
++        "missing_rgb": {
++          "accuracy": 0.7971428632736206,
++          "mean_iou": 0.30601799488067627,
++          "proxy_map50": 0.08948664093511047
++        },
++        "missing_ir": {
++          "accuracy": 0.8485714197158813,
++          "mean_iou": 0.2633114755153656,
++          "proxy_map50": 0.03924383036169099
++        },
++        "ir_shift": {
++          "accuracy": 0.9971428513526917,
++          "mean_iou": 0.3347558379173279,
++          "proxy_map50": 0.07293014014845789
++        },
++        "mixed": {
++          "accuracy": 0.8514285683631897,
++          "mean_iou": 0.27949345111846924,
++          "proxy_map50": 0.03409028293105057
++        }
++      },
++      {
++        "clean": {
++          "accuracy": 0.991428554058075,
++          "mean_iou": 0.4367985725402832,
++          "proxy_map50": 0.3429336766558107
++        },
++        "basis_rotate": {
++          "accuracy": 0.3400000035762787,
++          "mean_iou": 0.2283545732498169,
++          "proxy_map50": 0.0017494053941344942
++        },
++        "rgb_noise": {
++          "accuracy": 0.8171428442001343,
++          "mean_iou": 0.11790004372596741,
++          "proxy_map50": 0.0006313582295152771
++        },
++        "ir_noise": {
++          "accuracy": 0.9057142734527588,
++          "mean_iou": 0.26383262872695923,
++          "proxy_map50": 0.017289600312369723
++        },
++        "missing_rgb": {
++          "accuracy": 0.7571428418159485,
++          "mean_iou": 0.2579747438430786,
++          "proxy_map50": 0.02346800170680019
++        },
++        "missing_ir": {
++          "accuracy": 0.9171428680419922,
++          "mean_iou": 0.29852133989334106,
++          "proxy_map50": 0.07168743625822382
++        },
++        "ir_shift": {
++          "accuracy": 0.9942857027053833,
++          "mean_iou": 0.34631580114364624,
++          "proxy_map50": 0.07179485854922496
++        },
++        "mixed": {
++          "accuracy": 0.8514285683631897,
++          "mean_iou": 0.15356117486953735,
++          "proxy_map50": 0.00412133327525434
++        }
++      },
++      {
++        "clean": {
++          "accuracy": 1.0,
++          "mean_iou": 0.47348228096961975,
++          "proxy_map50": 0.35249149014140857
++        },
++        "basis_rotate": {
++          "accuracy": 0.24285714328289032,
++          "mean_iou": 0.2529672086238861,
++          "proxy_map50": 0.03126305438218678
++        },
++        "rgb_noise": {
++          "accuracy": 0.7742857336997986,
++          "mean_iou": 0.21200156211853027,
++          "proxy_map50": 0.011523852000098445
++        },
++        "ir_noise": {
++          "accuracy": 0.8342857360839844,
++          "mean_iou": 0.32532745599746704,
++          "proxy_map50": 0.09193730038232448
++        },
++        "missing_rgb": {
++          "accuracy": 0.800000011920929,
++          "mean_iou": 0.2873302102088928,
++          "proxy_map50": 0.05749490899216579
++        },
++        "missing_ir": {
++          "accuracy": 0.9342857003211975,
++          "mean_iou": 0.320404589176178,
++          "proxy_map50": 0.10693762864676679
++        },
++        "ir_shift": {
++          "accuracy": 1.0,
++          "mean_iou": 0.3672035038471222,
++          "proxy_map50": 0.0943635172886151
++        },
++        "mixed": {
++          "accuracy": 0.8485714197158813,
++          "mean_iou": 0.23870374262332916,
++          "proxy_map50": 0.0234684188903908
++        }
++      }
++    ],
++    "tgf": [
++      {
++        "clean": {
++          "accuracy": 0.9885714054107666,
++          "mean_iou": 0.4419620633125305,
++          "proxy_map50": 0.2595933877372262
++        },
++        "basis_rotate": {
++          "accuracy": 0.26571428775787354,
++          "mean_iou": 0.21595320105552673,
++          "proxy_map50": 0.00486255397853729
++        },
++        "rgb_noise": {
++          "accuracy": 0.6200000047683716,
++          "mean_iou": 0.26246774196624756,
++          "proxy_map50": 0.03344153337617331
++        },
++        "ir_noise": {
++          "accuracy": 0.9485714435577393,
++          "mean_iou": 0.2931608259677887,
++          "proxy_map50": 0.03289603292706854
++        },
++        "missing_rgb": {
++          "accuracy": 0.5057142972946167,
++          "mean_iou": 0.2450842261314392,
++          "proxy_map50": 0.015129653308467573
++        },
++        "missing_ir": {
++          "accuracy": 0.8828571438789368,
++          "mean_iou": 0.2755267024040222,
++          "proxy_map50": 0.046283806824651275
++        },
++        "ir_shift": {
++          "accuracy": 0.9714285731315613,
++          "mean_iou": 0.32005995512008667,
++          "proxy_map50": 0.04943128765250084
++        },
++        "mixed": {
++          "accuracy": 0.6628571152687073,
++          "mean_iou": 0.20324571430683136,
++          "proxy_map50": 0.023430896287095923
++        }
++      },
++      {
++        "clean": {
++          "accuracy": 0.9971428513526917,
++          "mean_iou": 0.45609238743782043,
++          "proxy_map50": 0.23640090408503073
++        },
++        "basis_rotate": {
++          "accuracy": 0.18285714089870453,
++          "mean_iou": 0.2822623550891876,
++          "proxy_map50": 0.00498563803049257
++        },
++        "rgb_noise": {
++          "accuracy": 0.808571457862854,
++          "mean_iou": 0.24762402474880219,
++          "proxy_map50": 0.021853067229519386
++        },
++        "ir_noise": {
++          "accuracy": 0.8171428442001343,
++          "mean_iou": 0.3063921630382538,
++          "proxy_map50": 0.05980212212838064
++        },
++        "missing_rgb": {
++          "accuracy": 0.7771428823471069,
++          "mean_iou": 0.2769193947315216,
++          "proxy_map50": 0.02798139153273606
++        },
++        "missing_ir": {
++          "accuracy": 0.9657142758369446,
++          "mean_iou": 0.3200434148311615,
++          "proxy_map50": 0.09239173126477428
++        },
++        "ir_shift": {
++          "accuracy": 0.9971428513526917,
++          "mean_iou": 0.3952113687992096,
++          "proxy_map50": 0.1205473868779765
++        },
++        "mixed": {
++          "accuracy": 0.7457143068313599,
++          "mean_iou": 0.21151907742023468,
++          "proxy_map50": 0.010130599711812814
++        }
++      },
++      {
++        "clean": {
++          "accuracy": 0.991428554058075,
++          "mean_iou": 0.4471973478794098,
++          "proxy_map50": 0.22873237296843857
++        },
++        "basis_rotate": {
++          "accuracy": 0.11142857372760773,
++          "mean_iou": 0.3644159436225891,
++          "proxy_map50": 0.037053982985757426
++        },
++        "rgb_noise": {
++          "accuracy": 0.7771428823471069,
++          "mean_iou": 0.2845810055732727,
++          "proxy_map50": 0.04368982812791579
++        },
++        "ir_noise": {
++          "accuracy": 0.831428587436676,
++          "mean_iou": 0.29007959365844727,
++          "proxy_map50": 0.028396721926805885
++        },
++        "missing_rgb": {
++          "accuracy": 0.7428571581840515,
++          "mean_iou": 0.2959984540939331,
++          "proxy_map50": 0.060207028283769046
++        },
++        "missing_ir": {
++          "accuracy": 0.8799999952316284,
++          "mean_iou": 0.30811238288879395,
++          "proxy_map50": 0.041179216693045056
++        },
++        "ir_shift": {
++          "accuracy": 1.0,
++          "mean_iou": 0.37910693883895874,
++          "proxy_map50": 0.10963575528282174
++        },
++        "mixed": {
++          "accuracy": 0.654285728931427,
++          "mean_iou": 0.21357005834579468,
++          "proxy_map50": 0.007294001341156127
++        }
++      },
++      {
++        "clean": {
++          "accuracy": 0.991428554058075,
++          "mean_iou": 0.4592548608779907,
++          "proxy_map50": 0.2796736322359522
++        },
++        "basis_rotate": {
++          "accuracy": 0.16857142746448517,
++          "mean_iou": 0.28124552965164185,
++          "proxy_map50": 0.00317283840652067
++        },
++        "rgb_noise": {
++          "accuracy": 0.7828571200370789,
++          "mean_iou": 0.29225224256515503,
++          "proxy_map50": 0.04717681341616254
++        },
++        "ir_noise": {
++          "accuracy": 0.7542856931686401,
++          "mean_iou": 0.18906903266906738,
++          "proxy_map50": 0.009965344218434959
++        },
++        "missing_rgb": {
++          "accuracy": 0.8514285683631897,
++          "mean_iou": 0.31401529908180237,
++          "proxy_map50": 0.09318459899332102
++        },
++        "missing_ir": {
++          "accuracy": 0.6485714316368103,
++          "mean_iou": 0.29784101247787476,
++          "proxy_map50": 0.07035003774894046
++        },
++        "ir_shift": {
++          "accuracy": 0.991428554058075,
++          "mean_iou": 0.35554325580596924,
++          "proxy_map50": 0.11223312451727536
++        },
++        "mixed": {
++          "accuracy": 0.7942857146263123,
++          "mean_iou": 0.16883213818073273,
++          "proxy_map50": 0.005172665336340453
++        }
++      },
++      {
++        "clean": {
++          "accuracy": 1.0,
++          "mean_iou": 0.4837109446525574,
++          "proxy_map50": 0.31094034290647937
++        },
++        "basis_rotate": {
++          "accuracy": 0.3742857277393341,
++          "mean_iou": 0.3213033974170685,
++          "proxy_map50": 0.02287121740036415
++        },
++        "rgb_noise": {
++          "accuracy": 0.8514285683631897,
++          "mean_iou": 0.2632928490638733,
++          "proxy_map50": 0.024934749306607384
++        },
++        "ir_noise": {
++          "accuracy": 0.9428571462631226,
++          "mean_iou": 0.3377581834793091,
++          "proxy_map50": 0.06596911291032874
++        },
++        "missing_rgb": {
++          "accuracy": 0.8514285683631897,
++          "mean_iou": 0.30860522389411926,
++          "proxy_map50": 0.03455469295663262
++        },
++        "missing_ir": {
++          "accuracy": 0.9828571677207947,
++          "mean_iou": 0.36470985412597656,
++          "proxy_map50": 0.14323351680637808
++        },
++        "ir_shift": {
++          "accuracy": 1.0,
++          "mean_iou": 0.3866848349571228,
++          "proxy_map50": 0.06149361530802364
++        },
++        "mixed": {
++          "accuracy": 0.7857142686843872,
++          "mean_iou": 0.22434557974338531,
++          "proxy_map50": 0.013891422021390116
++        }
++      }
++    ],
++    "pbtr": [
++      {
++        "clean": {
++          "accuracy": 1.0,
++          "mean_iou": 0.4059029817581177,
++          "proxy_map50": 0.25033669237745076
++        },
++        "basis_rotate": {
++          "accuracy": 0.24285714328289032,
++          "mean_iou": 0.24193158745765686,
++          "proxy_map50": 0.007082499391879146
++        },
++        "rgb_noise": {
++          "accuracy": 0.854285717010498,
++          "mean_iou": 0.25436726212501526,
++          "proxy_map50": 0.01019575590197214
++        },
++        "ir_noise": {
++          "accuracy": 0.977142870426178,
++          "mean_iou": 0.26688092947006226,
++          "proxy_map50": 0.012108973557100656
++        },
++        "missing_rgb": {
++          "accuracy": 0.6828571557998657,
++          "mean_iou": 0.27281424403190613,
++          "proxy_map50": 0.044695281089609004
++        },
++        "missing_ir": {
++          "accuracy": 0.991428554058075,
++          "mean_iou": 0.26620909571647644,
++          "proxy_map50": 0.05010635217828756
++        },
++        "ir_shift": {
++          "accuracy": 1.0,
++          "mean_iou": 0.31498101353645325,
++          "proxy_map50": 0.05104817796194022
++        },
++        "mixed": {
++          "accuracy": 0.7942857146263123,
++          "mean_iou": 0.19752196967601776,
++          "proxy_map50": 0.007592403689714587
++        }
++      },
++      {
++        "clean": {
++          "accuracy": 1.0,
++          "mean_iou": 0.36916059255599976,
++          "proxy_map50": 0.16623547894503213
++        },
++        "basis_rotate": {
++          "accuracy": 0.30000001192092896,
++          "mean_iou": 0.21951590478420258,
++          "proxy_map50": 0.00832598197892814
++        },
++        "rgb_noise": {
++          "accuracy": 0.8657143115997314,
++          "mean_iou": 0.27304399013519287,
++          "proxy_map50": 0.02119784477313198
++        },
++        "ir_noise": {
++          "accuracy": 0.8914285898208618,
++          "mean_iou": 0.2825144827365875,
++          "proxy_map50": 0.04715477481084933
++        },
++        "missing_rgb": {
++          "accuracy": 0.7685714364051819,
++          "mean_iou": 0.26489463448524475,
++          "proxy_map50": 0.054733420506552555
++        },
++        "missing_ir": {
++          "accuracy": 0.9885714054107666,
++          "mean_iou": 0.29316481947898865,
++          "proxy_map50": 0.08408057497796376
++        },
++        "ir_shift": {
++          "accuracy": 1.0,
++          "mean_iou": 0.3480592370033264,
++          "proxy_map50": 0.10303861993019599
++        },
++        "mixed": {
++          "accuracy": 0.6857143044471741,
++          "mean_iou": 0.22474054992198944,
++          "proxy_map50": 0.01460327811044743
++        }
++      },
++      {
++        "clean": {
++          "accuracy": 1.0,
++          "mean_iou": 0.4460441470146179,
++          "proxy_map50": 0.3267336435134439
++        },
++        "basis_rotate": {
++          "accuracy": 0.05428571254014969,
++          "mean_iou": 0.29939743876457214,
++          "proxy_map50": 0.014283722898204228
++        },
++        "rgb_noise": {
++          "accuracy": 0.8799999952316284,
++          "mean_iou": 0.3258681893348694,
++          "proxy_map50": 0.033626851520608916
++        },
++        "ir_noise": {
++          "accuracy": 0.9485714435577393,
++          "mean_iou": 0.3139118254184723,
++          "proxy_map50": 0.050275583313704186
++        },
++        "missing_rgb": {
++          "accuracy": 0.7885714173316956,
++          "mean_iou": 0.29530543088912964,
++          "proxy_map50": 0.09221659398201225
++        },
++        "missing_ir": {
++          "accuracy": 0.8600000143051147,
++          "mean_iou": 0.30370527505874634,
++          "proxy_map50": 0.11429308947511538
++        },
++        "ir_shift": {
++          "accuracy": 0.991428554058075,
++          "mean_iou": 0.36522385478019714,
++          "proxy_map50": 0.11674592669500725
++        },
++        "mixed": {
++          "accuracy": 0.8028571605682373,
++          "mean_iou": 0.25166940689086914,
++          "proxy_map50": 0.01972134105235664
++        }
++      },
++      {
++        "clean": {
++          "accuracy": 0.9971428513526917,
++          "mean_iou": 0.4868718087673187,
++          "proxy_map50": 0.38171894321620103
++        },
++        "basis_rotate": {
++          "accuracy": 0.24285714328289032,
++          "mean_iou": 0.250389039516449,
++          "proxy_map50": 0.0031416112972425846
++        },
++        "rgb_noise": {
++          "accuracy": 0.845714271068573,
++          "mean_iou": 0.2305658459663391,
++          "proxy_map50": 0.004751492343091747
++        },
++        "ir_noise": {
++          "accuracy": 0.9399999976158142,
++          "mean_iou": 0.25436151027679443,
++          "proxy_map50": 0.0048622398712361
++        },
++        "missing_rgb": {
++          "accuracy": 0.8057143092155457,
++          "mean_iou": 0.2585075795650482,
++          "proxy_map50": 0.025976513301773058
++        },
++        "missing_ir": {
++          "accuracy": 0.9742857217788696,
++          "mean_iou": 0.38332685828208923,
++          "proxy_map50": 0.18429554157478234
++        },
++        "ir_shift": {
++          "accuracy": 0.9857142567634583,
++          "mean_iou": 0.4090600609779358,
++          "proxy_map50": 0.15254073327871442
++        },
++        "mixed": {
++          "accuracy": 0.7657142877578735,
++          "mean_iou": 0.20296549797058105,
++          "proxy_map50": 0.0027010041421502867
++        }
++      },
++      {
++        "clean": {
++          "accuracy": 0.7714285850524902,
++          "mean_iou": 0.3458673655986786,
++          "proxy_map50": 0.1625080818750499
++        },
++        "basis_rotate": {
++          "accuracy": 0.30571427941322327,
++          "mean_iou": 0.268169105052948,
++          "proxy_map50": 0.06830702518382378
++        },
++        "rgb_noise": {
++          "accuracy": 0.8371428847312927,
++          "mean_iou": 0.2257169932126999,
++          "proxy_map50": 0.021217488062713112
++        },
++        "ir_noise": {
++          "accuracy": 0.8828571438789368,
++          "mean_iou": 0.22114057838916779,
++          "proxy_map50": 0.013442831348415757
++        },
++        "missing_rgb": {
++          "accuracy": 0.488571435213089,
++          "mean_iou": 0.22619317471981049,
++          "proxy_map50": 0.011811190157877379
++        },
++        "missing_ir": {
++          "accuracy": 0.7571428418159485,
++          "mean_iou": 0.27411070466041565,
++          "proxy_map50": 0.07307904214711775
++        },
++        "ir_shift": {
++          "accuracy": 0.8857142925262451,
++          "mean_iou": 0.29998329281806946,
++          "proxy_map50": 0.0663886938034411
++        },
++        "mixed": {
++          "accuracy": 0.7685714364051819,
++          "mean_iou": 0.17324966192245483,
++          "proxy_map50": 0.010977723102919824
++        }
++      }
++    ],
++    "goci": [
++      {
++        "clean": {
++          "accuracy": 0.9942857027053833,
++          "mean_iou": 0.44927045702934265,
++          "proxy_map50": 0.3579895449213503
++        },
++        "basis_rotate": {
++          "accuracy": 0.13428571820259094,
++          "mean_iou": 0.2572064995765686,
++          "proxy_map50": 0.004841228021680552
++        },
++        "rgb_noise": {
++          "accuracy": 0.6628571152687073,
++          "mean_iou": 0.13519372045993805,
++          "proxy_map50": 0.0010259691152139667
++        },
++        "ir_noise": {
++          "accuracy": 0.8428571224212646,
++          "mean_iou": 0.3144662380218506,
++          "proxy_map50": 0.050578214307168246
++        },
++        "missing_rgb": {
++          "accuracy": 0.6885714530944824,
++          "mean_iou": 0.2286289930343628,
++          "proxy_map50": 0.022528324285519263
++        },
++        "missing_ir": {
++          "accuracy": 0.7914285659790039,
++          "mean_iou": 0.31314611434936523,
++          "proxy_map50": 0.09479612353956095
++        },
++        "ir_shift": {
++          "accuracy": 0.9800000190734863,
++          "mean_iou": 0.37981945276260376,
++          "proxy_map50": 0.16999198779672947
++        },
++        "mixed": {
++          "accuracy": 0.7799999713897705,
++          "mean_iou": 0.20204275846481323,
++          "proxy_map50": 0.0069611741820171215
++        }
++      },
++      {
++        "clean": {
++          "accuracy": 0.9971428513526917,
++          "mean_iou": 0.40999293327331543,
++          "proxy_map50": 0.28139459951802626
++        },
++        "basis_rotate": {
++          "accuracy": 0.3285714387893677,
++          "mean_iou": 0.2512494623661041,
++          "proxy_map50": 0.013554867951556854
++        },
++        "rgb_noise": {
++          "accuracy": 0.7400000095367432,
++          "mean_iou": 0.1738526076078415,
++          "proxy_map50": 0.007134486361385722
++        },
++        "ir_noise": {
++          "accuracy": 0.8428571224212646,
++          "mean_iou": 0.1982160359621048,
++          "proxy_map50": 0.01076473535644087
++        },
++        "missing_rgb": {
++          "accuracy": 0.6228571534156799,
++          "mean_iou": 0.25035780668258667,
++          "proxy_map50": 0.030481605833508757
++        },
++        "missing_ir": {
++          "accuracy": 0.9742857217788696,
++          "mean_iou": 0.2953585684299469,
++          "proxy_map50": 0.08909819737967166
++        },
++        "ir_shift": {
++          "accuracy": 0.9885714054107666,
++          "mean_iou": 0.3276573121547699,
++          "proxy_map50": 0.071128106155246
++        },
++        "mixed": {
++          "accuracy": 0.7971428632736206,
++          "mean_iou": 0.1830301582813263,
++          "proxy_map50": 0.011540718649915297
++        }
++      },
++      {
++        "clean": {
++          "accuracy": 1.0,
++          "mean_iou": 0.48035791516304016,
++          "proxy_map50": 0.409490320617823
++        },
++        "basis_rotate": {
++          "accuracy": 0.06857142597436905,
++          "mean_iou": 0.332153856754303,
++          "proxy_map50": 0.009441540744442058
++        },
++        "rgb_noise": {
++          "accuracy": 0.8057143092155457,
++          "mean_iou": 0.25942355394363403,
++          "proxy_map50": 0.012245984330667392
++        },
++        "ir_noise": {
++          "accuracy": 0.7828571200370789,
++          "mean_iou": 0.24829894304275513,
++          "proxy_map50": 0.02230116946444303
++        },
++        "missing_rgb": {
++          "accuracy": 0.7914285659790039,
++          "mean_iou": 0.3000572621822357,
++          "proxy_map50": 0.06361825840631194
++        },
++        "missing_ir": {
++          "accuracy": 0.9800000190734863,
++          "mean_iou": 0.26325100660324097,
++          "proxy_map50": 0.042053578618633125
++        },
++        "ir_shift": {
++          "accuracy": 0.9971428513526917,
++          "mean_iou": 0.3417581617832184,
++          "proxy_map50": 0.06985089834777193
++        },
++        "mixed": {
++          "accuracy": 0.8171428442001343,
++          "mean_iou": 0.23393221199512482,
++          "proxy_map50": 0.010568007762946165
++        }
++      },
++      {
++        "clean": {
++          "accuracy": 1.0,
++          "mean_iou": 0.44156572222709656,
++          "proxy_map50": 0.35130000994557
++        },
++        "basis_rotate": {
++          "accuracy": 0.34857141971588135,
++          "mean_iou": 0.2238696962594986,
++          "proxy_map50": 0.004638259738991015
++        },
++        "rgb_noise": {
++          "accuracy": 0.7628571391105652,
++          "mean_iou": 0.20254167914390564,
++          "proxy_map50": 0.005832986320096911
++        },
++        "ir_noise": {
++          "accuracy": 0.8199999928474426,
++          "mean_iou": 0.2428915798664093,
++          "proxy_map50": 0.027259190877129837
++        },
++        "missing_rgb": {
++          "accuracy": 0.8600000143051147,
++          "mean_iou": 0.2642781734466553,
++          "proxy_map50": 0.04461693317655728
++        },
++        "missing_ir": {
++          "accuracy": 0.9257143139839172,
++          "mean_iou": 0.293626606464386,
++          "proxy_map50": 0.051880295515434695
++        },
++        "ir_shift": {
++          "accuracy": 0.9885714054107666,
++          "mean_iou": 0.35682231187820435,
++          "proxy_map50": 0.12981526922562686
++        },
++        "mixed": {
++          "accuracy": 0.7971428632736206,
++          "mean_iou": 0.17444656789302826,
++          "proxy_map50": 0.0062775959039755
++        }
++      },
++      {
++        "clean": {
++          "accuracy": 1.0,
++          "mean_iou": 0.4834097623825073,
++          "proxy_map50": 0.3909430848793344
++        },
++        "basis_rotate": {
++          "accuracy": 0.39714285731315613,
++          "mean_iou": 0.2529599964618683,
++          "proxy_map50": 0.012368655844129384
++        },
++        "rgb_noise": {
++          "accuracy": 0.8057143092155457,
++          "mean_iou": 0.19087177515029907,
++          "proxy_map50": 0.00350415864924079
++        },
++        "ir_noise": {
++          "accuracy": 0.854285717010498,
++          "mean_iou": 0.29616403579711914,
++          "proxy_map50": 0.042083538845274
++        },
++        "missing_rgb": {
++          "accuracy": 0.7771428823471069,
++          "mean_iou": 0.283596009016037,
++          "proxy_map50": 0.024771540966566356
++        },
++        "missing_ir": {
++          "accuracy": 0.9971428513526917,
++          "mean_iou": 0.30438145995140076,
++          "proxy_map50": 0.08824406108219472
++        },
++        "ir_shift": {
++          "accuracy": 1.0,
++          "mean_iou": 0.3529023826122284,
++          "proxy_map50": 0.036024226529337684
++        },
++        "mixed": {
++          "accuracy": 0.8399999737739563,
++          "mean_iou": 0.21811293065547943,
++          "proxy_map50": 0.006022425772127999
++        }
++      }
++    ],
++    "sjpa": [
++      {
++        "clean": {
++          "accuracy": 1.0,
++          "mean_iou": 0.5062364935874939,
++          "proxy_map50": 0.43094226837799543
++        },
++        "basis_rotate": {
++          "accuracy": 0.1599999964237213,
++          "mean_iou": 0.32300347089767456,
++          "proxy_map50": 0.02277379946801691
++        },
++        "rgb_noise": {
++          "accuracy": 0.9142857193946838,
++          "mean_iou": 0.40352270007133484,
++          "proxy_map50": 0.1889241960791425
++        },
++        "ir_noise": {
++          "accuracy": 0.9971428513526917,
++          "mean_iou": 0.4762459993362427,
++          "proxy_map50": 0.3171981075933451
++        },
++        "missing_rgb": {
++          "accuracy": 0.7771428823471069,
++          "mean_iou": 0.35767024755477905,
++          "proxy_map50": 0.14378014004531214
++        },
++        "missing_ir": {
++          "accuracy": 0.9942857027053833,
++          "mean_iou": 0.46719351410865784,
++          "proxy_map50": 0.32956358890529885
++        },
++        "ir_shift": {
++          "accuracy": 1.0,
++          "mean_iou": 0.4994893968105316,
++          "proxy_map50": 0.4182241197038802
++        },
++        "mixed": {
++          "accuracy": 0.6285714507102966,
++          "mean_iou": 0.09827474504709244,
++          "proxy_map50": 0.0001303780964797914
++        }
++      },
++      {
++        "clean": {
++          "accuracy": 0.9971428513526917,
++          "mean_iou": 0.45262351632118225,
++          "proxy_map50": 0.34213972300957296
++        },
++        "basis_rotate": {
++          "accuracy": 0.24571429193019867,
++          "mean_iou": 0.284519225358963,
++          "proxy_map50": 0.01579666508557275
++        },
++        "rgb_noise": {
++          "accuracy": 0.8914285898208618,
++          "mean_iou": 0.3846515715122223,
++          "proxy_map50": 0.18270282519333056
++        },
++        "ir_noise": {
++          "accuracy": 0.9971428513526917,
++          "mean_iou": 0.41633546352386475,
++          "proxy_map50": 0.2703091567677851
++        },
++        "missing_rgb": {
++          "accuracy": 0.8485714197158813,
++          "mean_iou": 0.3639950454235077,
++          "proxy_map50": 0.1896983869523019
++        },
++        "missing_ir": {
++          "accuracy": 0.9971428513526917,
++          "mean_iou": 0.41623708605766296,
++          "proxy_map50": 0.2563021016301163
++        },
++        "ir_shift": {
++          "accuracy": 0.9942857027053833,
++          "mean_iou": 0.43972069025039673,
++          "proxy_map50": 0.3015818872378663
++        },
++        "mixed": {
++          "accuracy": 0.7171428799629211,
++          "mean_iou": 0.0871138945221901,
++          "proxy_map50": 5.070993914807302e-05
++        }
++      },
++      {
++        "clean": {
++          "accuracy": 1.0,
++          "mean_iou": 0.5627533197402954,
++          "proxy_map50": 0.552275044268185
++        },
++        "basis_rotate": {
++          "accuracy": 0.07999999821186066,
++          "mean_iou": 0.3996517062187195,
++          "proxy_map50": 0.032461366153539305
++        },
++        "rgb_noise": {
++          "accuracy": 0.9257143139839172,
++          "mean_iou": 0.503572404384613,
++          "proxy_map50": 0.41567204252731393
++        },
++        "ir_noise": {
++          "accuracy": 0.9971428513526917,
++          "mean_iou": 0.4595145881175995,
++          "proxy_map50": 0.30535913460897973
++        },
++        "missing_rgb": {
++          "accuracy": 0.8199999928474426,
++          "mean_iou": 0.4719683825969696,
++          "proxy_map50": 0.3387110662805518
++        },
++        "missing_ir": {
++          "accuracy": 0.9942857027053833,
++          "mean_iou": 0.42435985803604126,
++          "proxy_map50": 0.25430921625242175
++        },
++        "ir_shift": {
++          "accuracy": 1.0,
++          "mean_iou": 0.5434908866882324,
++          "proxy_map50": 0.5292892038931638
++        },
++        "mixed": {
++          "accuracy": 0.7828571200370789,
++          "mean_iou": 0.13439099490642548,
++          "proxy_map50": 0.0006472271230360735
++        }
++      },
++      {
++        "clean": {
++          "accuracy": 1.0,
++          "mean_iou": 0.49700039625167847,
++          "proxy_map50": 0.44428443883095065
++        },
++        "basis_rotate": {
++          "accuracy": 0.29428571462631226,
++          "mean_iou": 0.24787145853042603,
++          "proxy_map50": 0.003935580950207943
++        },
++        "rgb_noise": {
++          "accuracy": 0.9485714435577393,
++          "mean_iou": 0.44339439272880554,
++          "proxy_map50": 0.30876454298639094
++        },
++        "ir_noise": {
++          "accuracy": 1.0,
++          "mean_iou": 0.4613202214241028,
++          "proxy_map50": 0.3991933286025316
++        },
++        "missing_rgb": {
++          "accuracy": 0.9142857193946838,
++          "mean_iou": 0.41856998205184937,
++          "proxy_map50": 0.25618823087030806
++        },
++        "missing_ir": {
++          "accuracy": 0.9857142567634583,
++          "mean_iou": 0.4507862329483032,
++          "proxy_map50": 0.39783905968711725
++        },
++        "ir_shift": {
++          "accuracy": 1.0,
++          "mean_iou": 0.48607710003852844,
++          "proxy_map50": 0.43134699754216577
++        },
++        "mixed": {
++          "accuracy": 0.7657142877578735,
++          "mean_iou": 0.06592842191457748,
++          "proxy_map50": 5.963029218843172e-05
++        }
++      },
++      {
++        "clean": {
++          "accuracy": 1.0,
++          "mean_iou": 0.5442991256713867,
++          "proxy_map50": 0.5378659616834273
++        },
++        "basis_rotate": {
++          "accuracy": 0.4228571355342865,
++          "mean_iou": 0.2803976237773895,
++          "proxy_map50": 0.017442340913603294
++        },
++        "rgb_noise": {
++          "accuracy": 0.9514285922050476,
++          "mean_iou": 0.4660094380378723,
++          "proxy_map50": 0.3235766488601859
++        },
++        "ir_noise": {
++          "accuracy": 1.0,
++          "mean_iou": 0.4939573109149933,
++          "proxy_map50": 0.40272071866993187
++        },
++        "missing_rgb": {
++          "accuracy": 0.8999999761581421,
++          "mean_iou": 0.42103371024131775,
++          "proxy_map50": 0.23378778887212537
++        },
++        "missing_ir": {
++          "accuracy": 1.0,
++          "mean_iou": 0.4644697904586792,
++          "proxy_map50": 0.31689291696911703
++        },
++        "ir_shift": {
++          "accuracy": 1.0,
++          "mean_iou": 0.534743070602417,
++          "proxy_map50": 0.5111088894204648
++        },
++        "mixed": {
++          "accuracy": 0.800000011920929,
++          "mean_iou": 0.12430575489997864,
++          "proxy_map50": 0.00038569982648930016
++        }
++      }
++    ]
++  }
++}--- a/VALIDATION/statistical_domain_diagnostics.json
++++ b/VALIDATION/statistical_domain_diagnostics.json
+@@ -0,0 +1,11 @@
++{
++  "pooled_energy_rgb_mean": 0.7842605113983154,
++  "pooled_energy_ir_mean": 0.6981368064880371,
++  "full_energy_rgb_mean": 209.666748046875,
++  "full_energy_ir_mean": 185.3580780029297,
++  "corrected_trigger_mean": 0.05283269286155701,
++  "old_formula_trigger_mean": 1.0,
++  "rtpf_init_max_abs_diff": 0.0,
++  "rtpf_relative_change": 0.0,
++  "rtpf_bound": 0.5
++}--- a/tests/test_candidate_certificate.py
++++ b/tests/test_candidate_certificate.py
+@@ -0,0 +1,17 @@
++from __future__ import annotations
++
++import pytest
++
++from tools.certify_candidate import certify
++
++
++def test_certificate_is_finite_and_family_wise():
++    report = certify({"a": [0.2] * 1000, "b": [0.1] * 1000}, delta=0.05)
++    assert report["family_size"] == 2
++    assert report["results"]["a"]["lower_confidence_bound"] > 0
++    assert report["results"]["b"]["lower_confidence_bound"] < report["results"]["a"]["lower_confidence_bound"]
++
++
++def test_certificate_rejects_invalid_delta():
++    with pytest.raises(ValueError):
++        certify({"a": [0.1]}, delta=1.0)
+--- a/tests/test_dcspf_guard.py
++++ b/tests/test_dcspf_guard.py
+@@ -0,0 +1,59 @@
++from __future__ import annotations
++
++import torch
++
++from ultralytics.nn.modules.block import DCSPF
++
++
++def test_identity_initialized_expert_adapters():
++    module = DCSPF(8, groups=2, anchors=4, max_shift=0).eval()
++    x = torch.randn(3, 16, 12, 10)
++    assert torch.equal(module.raw_adapter(x), x)
++    assert torch.equal(module.canonical_adapter(x), x)
++
++
++def test_normalized_coherence_is_bounded_and_identical_pair_is_high():
++    module = DCSPF(8, groups=2, anchors=4, max_shift=0).eval()
++    x = torch.randn(5, 8, 20, 20)
++    coherence = module._normalized_coherence(x, x.clone())
++    assert torch.isfinite(coherence).all()
++    assert (coherence >= 0).all() and (coherence <= 1).all()
++    assert torch.all(coherence > 0.95)
++
++
++def test_guard_routes_coherent_pair_and_clear_single_modality():
++    module = DCSPF(8, groups=2, anchors=4, max_shift=0).eval()
++    coherent = 4.0 * torch.randn(4, 8, 16, 16)
++    gate, coherence, typicality, dominance, *_ = module._guard_terms(coherent, coherent.clone())
++    assert torch.all(gate == 1)
++    assert torch.all(coherence > module.coherence_tau)
++
++    present = 4.0 * torch.randn(4, 8, 16, 16)
++    missing = torch.zeros_like(present)
++    gate, _, _, dominance, *_ = module._guard_terms(present, missing)
++    assert torch.all(gate == 1)
++    assert torch.all(dominance >= module.dominance_tau)
++
++
++def test_guard_falls_back_when_both_modalities_are_atypical_and_incoherent():
++    module = DCSPF(8, groups=2, anchors=4, max_shift=0).eval()
++    generator = torch.Generator().manual_seed(123)
++    a = 10.0 * torch.randn(16, 8, 24, 24, generator=generator)
++    b = 10.0 * torch.randn(16, 8, 24, 24, generator=generator)
++    gate, coherence, typicality, dominance, *_ = module._guard_terms(a, b)
++    assert torch.all(typicality > module.typicality_tau)
++    assert torch.all(dominance < module.dominance_tau)
++    assert torch.all(gate == 0)
++    assert torch.isfinite(coherence).all()
++
++
++def test_forward_backward_and_diagnostics_are_finite():
++    module = DCSPF(8, groups=2, anchors=4, max_shift=1).train()
++    rgb = torch.randn(2, 8, 24, 24, requires_grad=True)
++    ir = torch.randn(2, 8, 24, 24, requires_grad=True)
++    output, diagnostics = module.forward_with_diagnostics([rgb, ir])
++    assert output.shape == (2, 16, 24, 24)
++    assert set((0.0, 1.0)).issuperset(set(diagnostics['gate'].unique().tolist()))
++    assert torch.isfinite(output).all()
++    output.square().mean().backward()
++    assert torch.isfinite(rgb.grad).all() and torch.isfinite(ir.grad).all()
+--- a/tests/test_rtpf_corrected.py
++++ b/tests/test_rtpf_corrected.py
+@@ -0,0 +1,75 @@
++import torch
++
++from ultralytics.nn.modules.block import GOCI, RTPF
++
++
++def test_reliability_uses_anchor_domain_not_full_resolution_energy():
++    torch.manual_seed(7)
++    rgb = torch.randn(2, 32, 64, 64)
++    ir = 0.75 * rgb + 0.25 * torch.randn_like(rgb)
++    module = GOCI(32, groups=8, anchors=8, momentum=1.0, eps=1e-3).train()
++    module([rgb, ir])
++    aligned_rgb, aligned_ir = module._align(rgb, ir)
++    _, trigger, pooled_rgb, pooled_ir = module._reliability_terms(aligned_rgb, aligned_ir)
++    full_rgb = aligned_rgb.float().square().mean((1, 2, 3), keepdim=True)
++    full_ir = aligned_ir.float().square().mean((1, 2, 3), keepdim=True)
++    old_trigger = torch.sigmoid(
++        module.trigger_k
++        * (
++            torch.maximum(
++                torch.log(full_rgb + 1e-4).abs(),
++                torch.log(full_ir + 1e-4).abs(),
++            )
++            - module.trigger_tau
++        )
++    )
++    assert pooled_rgb.mean() < 2.0 and pooled_ir.mean() < 2.0
++    assert full_rgb.mean() > 10.0 and full_ir.mean() > 10.0
++    assert trigger.mean() < 0.5
++    assert old_trigger.mean() > 0.99
++
++
++def test_rtpf_is_exact_concat_at_initialization():
++    module = RTPF(16, groups=4, anchors=4).eval()
++    rgb = torch.randn(2, 16, 20, 20)
++    ir = torch.randn_like(rgb)
++    actual = module([rgb, ir])
++    expected = torch.cat((rgb, ir), dim=1)
++    assert torch.equal(actual, expected)
++
++
++def test_rtpf_correction_obeys_frobenius_trust_bound():
++    radius = 0.35
++    module = RTPF(
++        16,
++        groups=4,
++        anchors=4,
++        trust_radius=radius,
++        fallback_tau=100.0,
++    ).eval()
++    module.step_parameter.data.fill_(4.0)
++    rgb = torch.randn(3, 16, 20, 20)
++    ir = torch.randn_like(rgb)
++    raw = torch.cat((rgb, ir), dim=1)
++    output = module([rgb, ir])
++    relative = (output - raw).flatten(1).norm(dim=1) / raw.flatten(1).norm(dim=1)
++    assert torch.all(relative <= radius + 1e-5)
++
++
++def test_rtpf_step_receives_gradient_at_zero():
++    module = RTPF(
++        8,
++        groups=2,
++        anchors=4,
++        fallback_tau=100.0,
++    ).train()
++    rgb = torch.randn(2, 8, 16, 16, requires_grad=True)
++    ir = torch.randn_like(rgb, requires_grad=True)
++    output = module([rgb, ir])
++    # A non-symmetric downstream objective makes the zero-initialized residual
++    # step observable while preserving exact concatenation in the forward pass.
++    weights = torch.linspace(0.5, 1.5, output.numel(), device=output.device).reshape_as(output)
++    (output * weights).mean().backward()
++    assert module.step_parameter.grad is not None
++    assert torch.isfinite(module.step_parameter.grad)
++    assert module.step_parameter.grad.abs() > 0
+--- a/tools/certify_candidate.py
++++ b/tools/certify_candidate.py
+@@ -0,0 +1,93 @@
++#!/usr/bin/env python3
++"""Finite-family paired non-inferiority certificate for bounded image utilities.
++
++The input CSV must contain one row per validation example and the columns
++``candidate``, ``baseline``, and optionally ``candidate_id``. Both utility
++columns must lie in [0, 1]. For K candidate configurations, the script reports
++
++    LCB_k = mean(candidate - baseline) - sqrt(2 log(K / delta) / n_k).
++
++By Hoeffding's inequality and a union bound, under i.i.d./exchangeable
++validation examples, all reported lower bounds hold simultaneously with
++probability at least 1-delta. This certificate is deliberately separate from
++mAP: use a bounded per-image utility fixed before viewing the test set.
++"""
++from __future__ import annotations
++
++import argparse
++import csv
++import json
++import math
++from collections import defaultdict
++from pathlib import Path
++
++
++def parse_args() -> argparse.Namespace:
++    parser = argparse.ArgumentParser()
++    parser.add_argument("csv", type=Path, help="CSV with candidate/baseline utilities in [0,1]")
++    parser.add_argument("--delta", type=float, default=0.05, help="family-wise error probability")
++    parser.add_argument("--output", type=Path, default=None, help="optional JSON output")
++    return parser.parse_args()
++
++
++def load_pairs(path: Path) -> dict[str, list[float]]:
++    groups: dict[str, list[float]] = defaultdict(list)
++    with path.open(newline="", encoding="utf-8") as handle:
++        reader = csv.DictReader(handle)
++        required = {"candidate", "baseline"}
++        if not required.issubset(reader.fieldnames or []):
++            raise ValueError(f"CSV must contain columns {sorted(required)}")
++        for line, row in enumerate(reader, start=2):
++            candidate = float(row["candidate"])
++            baseline = float(row["baseline"])
++            if not (0.0 <= candidate <= 1.0 and 0.0 <= baseline <= 1.0):
++                raise ValueError(f"line {line}: utilities must lie in [0,1]")
++            candidate_id = (row.get("candidate_id") or "candidate").strip() or "candidate"
++            groups[candidate_id].append(candidate - baseline)
++    if not groups:
++        raise ValueError("CSV contains no data rows")
++    return dict(groups)
++
++
++def certify(groups: dict[str, list[float]], delta: float) -> dict:
++    if not 0.0 < delta < 1.0:
++        raise ValueError("delta must lie strictly between 0 and 1")
++    family_size = len(groups)
++    results = {}
++    for candidate_id, differences in groups.items():
++        n = len(differences)
++        mean_difference = sum(differences) / n
++        radius = math.sqrt(2.0 * math.log(family_size / delta) / n)
++        lower_bound = mean_difference - radius
++        results[candidate_id] = {
++            "n": n,
++            "mean_paired_improvement": mean_difference,
++            "simultaneous_hoeffding_radius": radius,
++            "lower_confidence_bound": lower_bound,
++            "certified_strict_improvement": lower_bound > 0.0,
++            "certified_non_inferiority": lower_bound >= 0.0,
++        }
++    return {
++        "assumptions": [
++            "examples are i.i.d. or exchangeable with the deployment population",
++            "candidate and baseline utilities are paired and bounded in [0,1]",
++            "the candidate family and utility were fixed before test-set inspection",
++        ],
++        "delta": delta,
++        "family_size": family_size,
++        "results": results,
++    }
++
++
++def main() -> None:
++    args = parse_args()
++    report = certify(load_pairs(args.csv), args.delta)
++    text = json.dumps(report, indent=2)
++    print(text)
++    if args.output is not None:
++        args.output.parent.mkdir(parents=True, exist_ok=True)
++        args.output.write_text(text + "\n", encoding="utf-8")
++
++
++if __name__ == "__main__":
++    main()
+--- a/ultralytics/cfg/models/etfnet/etfnet_P2_C3k2_DCSPF_Guard.yaml
++++ b/ultralytics/cfg/models/etfnet/etfnet_P2_C3k2_DCSPF_Guard.yaml
+@@ -0,0 +1,46 @@
++# Experimental stronger proposal: Dual-Coordinate Safe Procrustes Fusion (DCSPF-Guard).
++# Fair control: same C3k2 backbone as dual_concat and corrected SJPA; only layer 9 differs.
++# The raw and canonical experts use identity-initialized grouped 1x1 adapters.
++scale: s
++ch: 6
++nc: 5
++scales:
++  s: [0.33, 0.50, 1024]
++
++backbone:
++  - [-1, 1, IN, []]
++  - [-1, 1, Multiin, [1]]
++  - [-2, 1, Multiin, [2]]
++  - [-2, 1, Conv, [64, 3, 2]]
++  - [-2, 1, Conv, [64, 3, 2]]
++  - [-2, 1, Conv, [128, 3, 2]]
++  - [-2, 1, Conv, [128, 3, 2]]
++  - [-2, 2, C3k2, [256, False, 0.25]]
++  - [-2, 2, C3k2, [256, False, 0.25]]
++  # groups, anchors, momentum, eps, reliability, reliability_gamma,
++  # trigger_tau, trigger_k, max_shift, shift_penalty, score_threshold,
++  # shift_margin, coherence_tau, typicality_tau, dominance_tau
++  - [[-2, -1], 1, DCSPF, [32, 8, 0.03, 0.001, True, 1.5, 0.6, 12.0, 1, 0.03, 0.3, 0.02, 0.35, 0.6, 0.8]]
++  - [-1, 1, Conv, [256, 3, 2]]
++  - [-1, 2, C3k2, [512, False, 0.25]]
++  - [-1, 1, Conv, [512, 3, 2]]
++  - [-1, 2, C3k2, [512, True]]
++  - [-1, 1, Conv, [1024, 3, 2]]
++  - [-1, 3, C3k2, [1024, True]]
++  - [-1, 1, SPPF, [1024, 5]]
++  - [-1, 2, C2PSA, [1024]]
++
++head:
++  - [-1, 1, nn.Upsample, [None, 2, 'nearest']]
++  - [[-1, 13], 1, Concat, [1]]
++  - [-1, 2, C3k2, [512, False]]
++  - [-1, 1, nn.Upsample, [None, 2, 'nearest']]
++  - [[-1, 11], 1, Concat, [1]]
++  - [-1, 2, C3k2, [256, False]]
++  - [-1, 1, Conv, [256, 3, 2]]
++  - [[-1, 20], 1, Concat, [1]]
++  - [-1, 2, C3k2, [512, False]]
++  - [-1, 1, Conv, [512, 3, 2]]
++  - [[-1, 17], 1, Concat, [1]]
++  - [-1, 2, C3k2, [1024, True]]
++  - [[23, 26, 29], 1, OBB, [nc, 1]]
+--- a/ultralytics/cfg/models/etfnet/etfnet_P2_C3k2_RTPF.yaml
++++ b/ultralytics/cfg/models/etfnet/etfnet_P2_C3k2_RTPF.yaml
+@@ -0,0 +1,47 @@
++# Proposed model: Residual Trust-region Procrustes Fusion (RTPF).
++# Fair control: architecture is identical to dual_concat except layer 9.
++# RTPF starts as exact direct concatenation (step_parameter = 0) and learns only
++# a Frobenius-norm-bounded canonical correction.
++scale: s
++ch: 6
++nc: 5
++scales:
++  s: [0.33, 0.50, 1024]
++
++backbone:
++  - [-1, 1, IN, []]
++  - [-1, 1, Multiin, [1]]
++  - [-2, 1, Multiin, [2]]
++  - [-2, 1, Conv, [64, 3, 2]]
++  - [-2, 1, Conv, [64, 3, 2]]
++  - [-2, 1, Conv, [128, 3, 2]]
++  - [-2, 1, Conv, [128, 3, 2]]
++  - [-2, 2, C3k2, [256, False, 0.25]]
++  - [-2, 2, C3k2, [256, False, 0.25]]
++  # groups, anchors, momentum, eps, reliability, gamma, trigger_tau, trigger_k,
++  # max_shift, shift_penalty, score_threshold, shift_margin,
++  # trust_radius, fallback_tau, fallback_k
++  - [[-2, -1], 1, RTPF, [32, 8, 0.03, 0.001, True, 1.5, 0.6, 12.0, 1, 0.03, 0.3, 0.02, 1.0, 1.0, 8.0]]
++  - [-1, 1, Conv, [256, 3, 2]]
++  - [-1, 2, C3k2, [512, False, 0.25]]
++  - [-1, 1, Conv, [512, 3, 2]]
++  - [-1, 2, C3k2, [512, True]]
++  - [-1, 1, Conv, [1024, 3, 2]]
++  - [-1, 3, C3k2, [1024, True]]
++  - [-1, 1, SPPF, [1024, 5]]
++  - [-1, 2, C2PSA, [1024]]
++
++head:
++  - [-1, 1, nn.Upsample, [None, 2, 'nearest']]
++  - [[-1, 13], 1, Concat, [1]]
++  - [-1, 2, C3k2, [512, False]]
++  - [-1, 1, nn.Upsample, [None, 2, 'nearest']]
++  - [[-1, 11], 1, Concat, [1]]
++  - [-1, 2, C3k2, [256, False]]
++  - [-1, 1, Conv, [256, 3, 2]]
++  - [[-1, 20], 1, Concat, [1]]
++  - [-1, 2, C3k2, [512, False]]
++  - [-1, 1, Conv, [512, 3, 2]]
++  - [[-1, 17], 1, Concat, [1]]
++  - [-1, 2, C3k2, [1024, True]]
++  - [[23, 26, 29], 1, OBB, [nc, 1]]
+--- a/ultralytics/cfg/models/etfnet/etfnet_P2_C3k2_SJPA_TR_Corrected.yaml
++++ b/ultralytics/cfg/models/etfnet/etfnet_P2_C3k2_SJPA_TR_Corrected.yaml
+@@ -0,0 +1,45 @@
++# Main proposal: statistically calibrated SJPA-TR on the exact dual_concat backbone.
++# Only layer 9 differs from etfnet_dualstream_noCAFEM_noTGF.yaml.
++scale: s
++ch: 6
++nc: 5
++scales:
++  s: [0.33, 0.50, 1024]
++
++backbone:
++  - [-1, 1, IN, []]
++  - [-1, 1, Multiin, [1]]
++  - [-2, 1, Multiin, [2]]
++  - [-2, 1, Conv, [64, 3, 2]]
++  - [-2, 1, Conv, [64, 3, 2]]
++  - [-2, 1, Conv, [128, 3, 2]]
++  - [-2, 1, Conv, [128, 3, 2]]
++  - [-2, 2, C3k2, [256, False, 0.25]]
++  - [-2, 2, C3k2, [256, False, 0.25]]
++  # groups, anchors, momentum, eps, reliability, reliability_gamma,
++  # trigger_tau, trigger_k, max_shift, normalized shift_penalty,
++  # score_threshold, required score-gain margin
++  - [[-2, -1], 1, SJPA, [32, 8, 0.03, 0.001, True, 1.5, 0.6, 12.0, 1, 0.03, 0.3, 0.02]]
++  - [-1, 1, Conv, [256, 3, 2]]
++  - [-1, 2, C3k2, [512, False, 0.25]]
++  - [-1, 1, Conv, [512, 3, 2]]
++  - [-1, 2, C3k2, [512, True]]
++  - [-1, 1, Conv, [1024, 3, 2]]
++  - [-1, 3, C3k2, [1024, True]]
++  - [-1, 1, SPPF, [1024, 5]]
++  - [-1, 2, C2PSA, [1024]]
++
++head:
++  - [-1, 1, nn.Upsample, [None, 2, 'nearest']]
++  - [[-1, 13], 1, Concat, [1]]
++  - [-1, 2, C3k2, [512, False]]
++  - [-1, 1, nn.Upsample, [None, 2, 'nearest']]
++  - [[-1, 11], 1, Concat, [1]]
++  - [-1, 2, C3k2, [256, False]]
++  - [-1, 1, Conv, [256, 3, 2]]
++  - [[-1, 20], 1, Concat, [1]]
++  - [-1, 2, C3k2, [512, False]]
++  - [-1, 1, Conv, [512, 3, 2]]
++  - [[-1, 17], 1, Concat, [1]]
++  - [-1, 2, C3k2, [1024, True]]
++  - [[23, 26, 29], 1, OBB, [nc, 1]]

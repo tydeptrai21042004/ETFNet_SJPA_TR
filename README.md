@@ -395,3 +395,15 @@ This repository remains under the GNU Affero General Public License v3.0. See [`
 ## Organized source layout
 
 Version 6 splits the implementation and documentation into bounded source packs while preserving all existing imports, commands, model YAMLs, public-dataset adapters, training, validation, prediction, export, and resume behavior. Every committed subfolder contains at most 100 files recursively. See [`REPOSITORY_LAYOUT.md`](REPOSITORY_LAYOUT.md) and run `python tools/audit_repository_layout.py` to verify the rule.
+
+## Recheck v9: DCSPF-Guard experimental candidate
+
+The repository now includes a stricter, fair-backbone fusion candidate:
+
+- `ultralytics/cfg/models/etfnet/etfnet_P2_C3k2_DCSPF_Guard.yaml`
+- `RECHECK_V9_REPORT.md`
+- `DCSPF_MATHEMATICAL_APPENDIX.md`
+- `VALIDATION/recheck_v9/fair_component_seeded_5seed.json`
+- `tools/certify_candidate.py`
+
+DCSPF routes between raw RGB–IR coordinates and the corrected Procrustes-canonical coordinates using bounded coherence, pooled-domain typicality, and modality dominance. It is experimental: the controlled proxy supports superiority over direct concatenation, but not superiority over corrected SJPA on every seed or aggregate robustness measure. Full VEDAI training is required before making a highest-mAP claim.

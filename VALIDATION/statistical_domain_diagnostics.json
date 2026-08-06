@@ -1,0 +1,11 @@
+{
+  "pooled_energy_rgb_mean": 0.7842605113983154,
+  "pooled_energy_ir_mean": 0.6981368064880371,
+  "full_energy_rgb_mean": 209.666748046875,
+  "full_energy_ir_mean": 185.3580780029297,
+  "corrected_trigger_mean": 0.05283269286155701,
+  "old_formula_trigger_mean": 1.0,
+  "rtpf_init_max_abs_diff": 0.0,
+  "rtpf_relative_change": 0.0,
+  "rtpf_bound": 0.5
+}

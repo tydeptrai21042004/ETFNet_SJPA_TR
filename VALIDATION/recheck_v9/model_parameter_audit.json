@@ -1,0 +1,34 @@
+{
+  "dual_concat": {
+    "config": "etfnet_dualstream_noCAFEM_noTGF.yaml",
+    "parameters_total": 11205570,
+    "parameters_trainable": 11205554,
+    "fusion_layers": []
+  },
+  "corrected_sjpa": {
+    "config": "etfnet_P2_C3k2_SJPA_TR_Corrected.yaml",
+    "parameters_total": 11205570,
+    "parameters_trainable": 11205554,
+    "fusion_layers": [
+      {
+        "index": 9,
+        "type": "SJPA",
+        "parameters": 0
+      }
+    ]
+  },
+  "dcspf_guard": {
+    "config": "etfnet_P2_C3k2_DCSPF_Guard.yaml",
+    "parameters_total": 11271618,
+    "parameters_trainable": 11271602,
+    "fusion_layers": [
+      {
+        "index": 9,
+        "type": "DCSPF",
+        "parameters": 66048
+      }
+    ],
+    "overhead_vs_concat": 66048,
+    "overhead_percent_vs_concat": 0.5894211539439761
+  }
+}

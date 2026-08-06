@@ -19,10 +19,10 @@ EXPECTED_VERSION = "8.0.238+etfnetsjpa.7"
 REPO_URL = "https://github.com/tydeptrai21042004/ETFNet_SJPA_TR.git"
 REPO_REF = "main"
 SOURCE_MODE = "auto"  # auto | uploaded_zip | github
-CORRECTED_ZIP_GLOB = "ETFNet_SJPA_TR_Corrected_v7.zip"
+CORRECTED_ZIP_GLOB = "ETFNet_SJPA_TR_Corrected_StatisticalFix_v8.zip"
 
-EPOCHS = 10
-SEEDS = [0]
+EPOCHS = int(os.environ.get("ETFNET_EPOCHS", "100"))
+SEEDS = [int(x) for x in os.environ.get("ETFNET_SEEDS", "0,1,2").split(",") if x.strip()]
 IMGSZ = 512
 INITIAL_BATCH = 4
 WORKERS = 2
@@ -36,8 +36,8 @@ RETRAIN_COMPLETED = False
 WORK_ROOT = Path("/kaggle/working")
 REPO_DIR = WORK_ROOT / "ETFNet_SJPA_TR_Corrected"
 DATA_ROOT = WORK_ROOT / "etfnet_vedai512_full"
-RUN_ROOT = WORK_ROOT / "etfnet_corrected_vedai512_10epoch_all_baselines"
-RESULT_ZIP = WORK_ROOT / "ETFNet_SJPA_TR_Corrected_VEDAI10_results.zip"
+RUN_ROOT = WORK_ROOT / f"etfnet_corrected_vedai512_{EPOCHS}epoch_{len(SEEDS)}seed"
+RESULT_ZIP = WORK_ROOT / f"ETFNet_SJPA_TR_Corrected_VEDAI_{EPOCHS}epoch_{len(SEEDS)}seed_results.zip"
 
 
 def run(command, *, cwd=None, env=None, check=True, log_path=None):
@@ -307,7 +307,9 @@ finally:
     torch.cuda.empty_cache()
 
 # 5) Model matrix and one ablation generated outside the source repository.
-proposal_yaml = REPO_DIR / "ultralytics/cfg/models/etfnet/etfnet_P2_CAFEM_SJPA.yaml"
+legacy_proposal_yaml = REPO_DIR / "ultralytics/cfg/models/etfnet/etfnet_P2_CAFEM_SJPA.yaml"
+proposal_yaml = REPO_DIR / "ultralytics/cfg/models/etfnet/etfnet_P2_C3k2_SJPA_TR_Corrected.yaml"
+rtpf_yaml = REPO_DIR / "ultralytics/cfg/models/etfnet/etfnet_P2_C3k2_RTPF.yaml"
 no_reliability_yaml = RUN_ROOT / "etfnet_P2_CAFEM_SJPA_noReliability.yaml"
 proposal_cfg = yaml.safe_load(proposal_yaml.read_text(encoding="utf-8"))
 for layer in proposal_cfg.get("backbone", []):
@@ -327,7 +329,9 @@ MODEL_MATRIX = {
     "tgf_only": REPO_DIR / "ultralytics/cfg/models/etfnet/etfnet_noCAFEM_TGF.yaml",
     "corrected_etfnet_tgf": REPO_DIR / "ultralytics/cfg/models/etfnet/etfnet_P2_CAFEM_TGF.yaml",
     "goci_no_spatial": REPO_DIR / "ultralytics/cfg/models/etfnet/etfnet_P2_CAFEM_GOCI.yaml",
+    "sjpa_cafem_legacy": legacy_proposal_yaml,
     "sjpa_no_reliability": no_reliability_yaml,
+    "rtpf_safety_ablation": rtpf_yaml,
     "sjpa_tr_proposal": proposal_yaml,
 }
 for label, path in MODEL_MATRIX.items():
@@ -453,7 +457,7 @@ if RUN_PROPOSAL_SMOKE:
             raise RuntimeError(f"Corrected proposal smoke test failed: {error}")
     print("Corrected full SJPA-TR real-data smoke training passed.")
 
-# 6) Ten-epoch comparison.
+# 6) Controlled comparison using the configured epoch and seed counts.
 records = []
 for seed in SEEDS:
     for label, model_path in MODEL_MATRIX.items():
