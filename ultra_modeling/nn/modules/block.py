@@ -15,7 +15,7 @@ from .transformer import TransformerBlock
 from ultralytics.utils.torch_utils import fuse_conv_and_bn
 
 __all__ = ('DFL', 'HGBlock', 'HGStem', 'SPP', 'SPPF', 'C1', 'C2', 'C3', 'C2f', 'C3x', 'C3TR', 'C3Ghost', 'C2fCIB', 'SCDown', 'PSA', 'C3k2', 'CAFEM', 'C2PSA',
-           'GhostBottleneck', 'Bottleneck', 'BottleneckCSP', 'Proto', 'RepC3', 'ResNetLayer', 'IN', 'Multiin', 'MF', 'Add', 'Add2', 'A2C2f', 'TGF', 'GOCI', 'SJPA', 'RTPF', 'DCSPF')
+           'GhostBottleneck', 'Bottleneck', 'BottleneckCSP', 'Proto', 'RepC3', 'ResNetLayer', 'IN', 'Multiin', 'MF', 'Add', 'Add2', 'A2C2f', 'TGF', 'GOCI', 'SJPA', 'RTPF', 'DCSPF', 'MPCRF')
 
 
 class SE_Block(nn.Module):
@@ -2351,3 +2351,205 @@ class DCSPF(SJPA):
         a, b, canonical, _ = self._canonical_branch(x[0], x[1])
         gate, *_ = self._guard_terms(a, b)
         return gate * self.canonical_adapter(canonical) + (1.0 - gate) * self.raw_adapter(raw)
+
+
+class MPCRF(nn.Module):
+    """Moment-Preserving Canonical Residual Fusion.
+
+    The module fixes three mathematical defects of direct whitening fusion:
+
+    1. statistics are estimated from deterministic point samples rather than
+       averaged anchor cells, so the estimated covariance has the same physical
+       scale as the full-resolution feature map;
+    2. statistics are computed independently for every sample, eliminating
+       batch-composition dependence and train/evaluation transform mismatch;
+    3. canonicalization is never used as a replacement representation. It only
+       drives a zero-initialized, norm-bounded residual around raw concatenation.
+
+    For each sample and channel group, regularized cross-covariance provides
+    the sign-safe orthogonal Procrustes factor Q=UV^T. The bidirectional
+    cycle-consistent candidates
+
+        R_c = (R-mu_r) Sigma_r^{-1/2} Q Sigma_r^{1/2} + mu_r,
+        I_c = (I-mu_i) Sigma_i^{-1/2} Q^T Sigma_i^{1/2} + mu_i
+
+    preserve each modality's regularized first and second moments. Learned
+    grouped 1x1 residual maps are initialized to zero, so the complete module is
+    exactly direct concatenation at initialization. A samplewise trust projection
+    guarantees
+
+        ||MPCRF(R,I) - concat(R,I)||_F
+            <= trust_radius * ||concat(R,I)||_F.
+    """
+
+    def __init__(self, channels: int, groups: int = 32, stat_grid: int = 16,
+                 eps: float = 1e-3, coherence_tau: float = 0.30,
+                 gate_k: float = 10.0, trust_radius: float = 0.25):
+        super().__init__()
+        if channels <= 0 or groups <= 0 or channels % groups != 0:
+            raise ValueError(
+                f'channels={channels} must be positive and divisible by groups={groups}'
+            )
+        if stat_grid < 2:
+            raise ValueError('stat_grid must be at least 2')
+        if eps <= 0:
+            raise ValueError('eps must be positive')
+        if not 0.0 <= coherence_tau <= 1.0:
+            raise ValueError('coherence_tau must lie in [0, 1]')
+        if gate_k <= 0:
+            raise ValueError('gate_k must be positive')
+        if trust_radius <= 0:
+            raise ValueError('trust_radius must be positive')
+
+        self.channels = int(channels)
+        self.groups = int(groups)
+        self.group_width = self.channels // self.groups
+        self.stat_grid = int(stat_grid)
+        self.eps = float(eps)
+        self.coherence_tau = float(coherence_tau)
+        self.gate_k = float(gate_k)
+        self.trust_radius = float(trust_radius)
+
+        # The adapters act only on canonical residuals and are zero initialized.
+        # Consequently the complete layer is exactly raw concatenation before
+        # the detector has learned that a correction is useful.
+        # Direct zero Parameters avoid consuming the global RNG. Constructing
+        # Conv2d and zeroing it afterwards changes every downstream detector
+        # initialization, making a same-seed comparison with Concat unfair.
+        kernel_shape = (self.channels, self.group_width, 1, 1)
+        self.rgb_residual_weight = nn.Parameter(torch.zeros(kernel_shape))
+        self.ir_residual_weight = nn.Parameter(torch.zeros(kernel_shape))
+
+    @staticmethod
+    def _autocast_disabled(device: torch.device):
+        if device.type in {'cpu', 'cuda', 'xpu'}:
+            return torch.autocast(device_type=device.type, enabled=False)
+        return contextlib.nullcontext()
+
+    def _point_sample(self, x: torch.Tensor) -> torch.Tensor:
+        """Select an approximately uniform grid without averaging feature cells."""
+        h, w = x.shape[-2:]
+        gh, gw = min(self.stat_grid, h), min(self.stat_grid, w)
+        # Cell-centre indices. Unlike average pooling, this operation does not
+        # divide feature variance by the number of cells inside an anchor bin.
+        iy = ((torch.arange(gh, device=x.device) * h + h // 2) // gh).clamp_max(h - 1)
+        ix = ((torch.arange(gw, device=x.device) * w + w // 2) // gw).clamp_max(w - 1)
+        return x.index_select(-2, iy).index_select(-1, ix)
+
+    def _tokens(self, x: torch.Tensor) -> torch.Tensor:
+        b, _, h, w = x.shape
+        return x.reshape(b, self.groups, self.group_width, h * w).permute(0, 1, 3, 2)
+
+    def _canonical_candidates(self, rgb: torch.Tensor, ir: torch.Tensor):
+        """Return moment-preserving candidates and bounded group coherence."""
+        b, _, h, w = rgb.shape
+        with self._autocast_disabled(rgb.device):
+            rs = self._tokens(self._point_sample(rgb.detach().float()))
+            is_ = self._tokens(self._point_sample(ir.detach().float()))
+            mu_r = rs.mean(-2, keepdim=True)
+            mu_i = is_.mean(-2, keepdim=True)
+            rc = rs - mu_r
+            ic = is_ - mu_i
+            n = max(1, rs.shape[-2] - 1)
+            cov_r = rc.transpose(-1, -2) @ rc / n
+            cov_i = ic.transpose(-1, -2) @ ic / n
+
+            er, vr = torch.linalg.eigh(cov_r)
+            ei, vi = torch.linalg.eigh(cov_i)
+            er = er.clamp_min(self.eps)
+            ei = ei.clamp_min(self.eps)
+            sqrt_r = vr @ torch.diag_embed(er.sqrt()) @ vr.transpose(-1, -2)
+            sqrt_i = vi @ torch.diag_embed(ei.sqrt()) @ vi.transpose(-1, -2)
+            inv_r = vr @ torch.diag_embed(er.rsqrt()) @ vr.transpose(-1, -2)
+            inv_i = vi @ torch.diag_embed(ei.rsqrt()) @ vi.transpose(-1, -2)
+
+            rw = rc @ inv_r
+            iw = ic @ inv_i
+            cross = rw.transpose(-1, -2) @ iw / n
+            u, singular, vh = torch.linalg.svd(cross, full_matrices=False)
+            # Use only the orthogonal polar/Procrustes factor Q=UV^T. Unlike
+            # the individual singular bases U and V, Q is invariant to matched
+            # SVD sign flips and rotations inside repeated-singular subspaces.
+            # Q solves min_{Q^T Q=I} ||rw Q - iw||_F^2; Q^T is the inverse
+            # Procrustes map. This gives a stable, cycle-consistent pair.
+            q = u @ vh
+            coherence = singular.clamp(0.0, 1.0).mean(-1)
+
+            rgb_live = self._tokens(rgb.float())
+            ir_live = self._tokens(ir.float())
+            rgb_candidate = ((rgb_live - mu_r) @ inv_r @ q @ sqrt_r) + mu_r
+            ir_candidate = (
+                (ir_live - mu_i) @ inv_i @ q.transpose(-1, -2) @ sqrt_i
+            ) + mu_i
+
+            rgb_candidate = rgb_candidate.permute(0, 1, 3, 2).reshape(
+                b, self.channels, h, w
+            )
+            ir_candidate = ir_candidate.permute(0, 1, 3, 2).reshape(
+                b, self.channels, h, w
+            )
+        return (
+            rgb_candidate.to(rgb.dtype),
+            ir_candidate.to(ir.dtype),
+            coherence,
+            singular,
+        )
+
+    @staticmethod
+    def _sample_norm(x: torch.Tensor) -> torch.Tensor:
+        return x.float().flatten(1).norm(dim=1).view(-1, 1, 1, 1)
+
+    def _forward_impl(self, x):
+        rgb, ir = x
+        raw = torch.cat((rgb, ir), dim=1)
+        rgb_candidate, ir_candidate, coherence, singular = self._canonical_candidates(rgb, ir)
+
+        # Smooth, bounded group confidence. The statistical decision is detached
+        # from detector gradients, while the residual adapters remain fully
+        # trainable through the live candidate differences.
+        gate = torch.sigmoid(
+            self.gate_k * (coherence - self.coherence_tau)
+        ).detach()
+        gate_map = gate.unsqueeze(-1).unsqueeze(-1).repeat_interleave(
+            self.group_width, dim=1
+        ).to(rgb.dtype)
+
+        delta_rgb = F.conv2d(
+            gate_map * (rgb_candidate - rgb),
+            self.rgb_residual_weight,
+            groups=self.groups,
+        )
+        delta_ir = F.conv2d(
+            gate_map * (ir_candidate - ir),
+            self.ir_residual_weight,
+            groups=self.groups,
+        )
+        correction = torch.cat((delta_rgb, delta_ir), dim=1)
+
+        raw_norm = self._sample_norm(raw)
+        correction_norm = self._sample_norm(correction)
+        radius = self.trust_radius * raw_norm
+        scale = torch.minimum(
+            torch.ones_like(correction_norm),
+            radius / (correction_norm + self.eps),
+        ).to(correction.dtype)
+        output = raw + scale * correction
+        diagnostics = {
+            'raw': raw,
+            'rgb_candidate': rgb_candidate,
+            'ir_candidate': ir_candidate,
+            'coherence': coherence,
+            'singular_values': singular,
+            'gate': gate,
+            'correction': correction,
+            'correction_norm': correction_norm,
+            'trust_radius_norm': radius,
+            'trust_scale': scale,
+        }
+        return output, diagnostics
+
+    def forward_with_diagnostics(self, x):
+        return self._forward_impl(x)
+
+    def forward(self, x):
+        return self._forward_impl(x)[0]

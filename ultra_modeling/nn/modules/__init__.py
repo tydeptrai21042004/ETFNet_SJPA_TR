@@ -30,4 +30,4 @@ __all__ = ('Conv', 'Conv2', 'LightConv', 'RepConv', 'DWConv', 'DWConvTranspose2d
            'C2f', 'C3x', 'C3TR', 'C3Ghost', 'GhostBottleneck', 'Bottleneck', 'BottleneckCSP', 'Proto', 'Detect',
            'Segment', 'Pose', 'Classify', 'TransformerEncoderLayer', 'RepC3', 'RTDETRDecoder', 'AIFI',
            'DeformableTransformerDecoder', 'DeformableTransformerDecoderLayer', 'MSDeformAttn', 'MLP', 'ResNetLayer',
-           'OBB', 'IN', 'Multiin', 'MF', 'Add', 'Add2', 'GOCI', 'SJPA', 'RTPF', 'DCSPF', 'C2fCIB', 'SCDown', 'PSA', 'C3k2', 'C2PSA', 'A2C2f', 'TGF')
+           'OBB', 'IN', 'Multiin', 'MF', 'Add', 'Add2', 'GOCI', 'SJPA', 'RTPF', 'DCSPF', 'MPCRF', 'C2fCIB', 'SCDown', 'PSA', 'C3k2', 'C2PSA', 'A2C2f', 'TGF')
