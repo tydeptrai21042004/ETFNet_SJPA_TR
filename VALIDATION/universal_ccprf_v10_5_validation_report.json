@@ -1,0 +1,273 @@
+{
+  "version": "8.0.238+etfnetsjpa.10.5",
+  "cases": {
+    "single_direct": {
+      "input_view_count": 1,
+      "pyramid": {
+        "P2": [
+          2,
+          16,
+          16,
+          20
+        ],
+        "P3": [
+          2,
+          32,
+          8,
+          10
+        ],
+        "P4": [
+          2,
+          48,
+          4,
+          5
+        ],
+        "P5": [
+          2,
+          64,
+          2,
+          3
+        ]
+      },
+      "p2_fusion_mode": "identity"
+    },
+    "paired_physical": {
+      "input_view_count": 2,
+      "pyramid": {
+        "P2": [
+          2,
+          16,
+          16,
+          20
+        ],
+        "P3": [
+          2,
+          32,
+          8,
+          10
+        ],
+        "P4": [
+          2,
+          48,
+          4,
+          5
+        ],
+        "P5": [
+          2,
+          64,
+          2,
+          3
+        ]
+      }
+    },
+    "three_physical": {
+      "input_view_count": 3,
+      "pyramid": {
+        "P2": [
+          2,
+          16,
+          16,
+          20
+        ],
+        "P3": [
+          2,
+          32,
+          8,
+          10
+        ],
+        "P4": [
+          2,
+          48,
+          4,
+          5
+        ],
+        "P5": [
+          2,
+          64,
+          2,
+          3
+        ]
+      }
+    },
+    "optional_subset": {
+      "input_view_count": 2,
+      "pyramid": {
+        "P2": [
+          2,
+          16,
+          16,
+          20
+        ],
+        "P3": [
+          2,
+          32,
+          8,
+          10
+        ],
+        "P4": [
+          2,
+          48,
+          4,
+          5
+        ],
+        "P5": [
+          2,
+          64,
+          2,
+          3
+        ]
+      }
+    }
+  },
+  "task_heads": {
+    "classify_single": {
+      "output": [
+        2,
+        4
+      ],
+      "parameters": 187088,
+      "finite": true
+    },
+    "segment_decomposed": {
+      "output": [
+        2,
+        1,
+        64,
+        80
+      ],
+      "parameters": 193664,
+      "finite": true
+    },
+    "detect_three_view": {
+      "output": {
+        "P2": {
+          "class_logits": [
+            2,
+            3,
+            16,
+            20
+          ],
+          "box_distances": [
+            2,
+            4,
+            16,
+            20
+          ],
+          "quality_logits": [
+            2,
+            1,
+            16,
+            20
+          ]
+        },
+        "P3": {
+          "class_logits": [
+            2,
+            3,
+            8,
+            10
+          ],
+          "box_distances": [
+            2,
+            4,
+            8,
+            10
+          ],
+          "quality_logits": [
+            2,
+            1,
+            8,
+            10
+          ]
+        },
+        "P4": {
+          "class_logits": [
+            2,
+            3,
+            4,
+            5
+          ],
+          "box_distances": [
+            2,
+            4,
+            4,
+            5
+          ],
+          "quality_logits": [
+            2,
+            1,
+            4,
+            5
+          ]
+        },
+        "P5": {
+          "class_logits": [
+            2,
+            3,
+            2,
+            3
+          ],
+          "box_distances": [
+            2,
+            4,
+            2,
+            3
+          ],
+          "quality_logits": [
+            2,
+            1,
+            2,
+            3
+          ]
+        }
+      },
+      "parameters": 212254,
+      "finite": true
+    },
+    "anomaly_optional_subset": {
+      "output": [
+        2,
+        32,
+        16,
+        20
+      ],
+      "parameters": 190054,
+      "finite": true
+    }
+  },
+  "set_fusion": {
+    "three_view_permutation_max_error": 2.384185791015625e-07,
+    "identity_initialization_tested_for_view_counts": [
+      1,
+      2,
+      3,
+      4
+    ]
+  },
+  "single_image_training_smoke": {
+    "direct": {
+      "initial_loss": 0.607006311416626,
+      "final_loss": 0.5566203594207764,
+      "relative_reduction": 0.08300729506133028
+    },
+    "appearance_texture": {
+      "initial_loss": 0.6517829298973083,
+      "final_loss": 0.5918410420417786,
+      "relative_reduction": 0.09196602903511746
+    }
+  },
+  "design_guarantees": [
+    "Direct single-view inputs do not manufacture a second view.",
+    "One-view set fusion is an exact identity.",
+    "Two-view inputs use pairwise bounded CCPRF.",
+    "More than two views use a shared leave-one-out consensus operator.",
+    "Named view mappings accept any non-empty configured subset.",
+    "Shared stream stages use GroupNorm and have no running statistics.",
+    "Feature output is always P2-P5 regardless of input view count."
+  ],
+  "limitations": [
+    "Software validation does not establish accuracy on an unseen real dataset.",
+    "Physical modalities must be spatially aligned before cross-view fusion.",
+    "Dense detection outputs require an external assignment, loss, and decoding pipeline."
+  ]
+}

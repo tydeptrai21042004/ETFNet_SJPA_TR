@@ -1,0 +1,36 @@
+{
+  "version": "8.0.238+etfnetsjpa.10.6",
+  "targeted_cerc_tests": {
+    "passed": 20,
+    "failed": 0
+  },
+  "full_repository_tests": {
+    "passed": 184,
+    "failed": 0,
+    "warnings": 3,
+    "warning_scope": "existing TorchScript deprecation warnings in SJPA tracing tests"
+  },
+  "validated_cases": [
+    "single RGB evidence",
+    "single grayscale evidence",
+    "two evidence fields",
+    "three evidence fields",
+    "four named medical evidence fields",
+    "missing configured medical modalities",
+    "classification",
+    "segmentation",
+    "dense detection",
+    "anomaly embeddings",
+    "28x28 grayscale medical input",
+    "RGB dermoscopy/endoscopy-like segmentation",
+    "grayscale ultrasound-like segmentation",
+    "fabric-like RGB segmentation",
+    "checkpoint save/reload",
+    "zero/constant/rank-deficient/extreme features",
+    "permutation-invariant consensus",
+    "scale-stable canonical support",
+    "trust-radius enforcement",
+    "first-step convolution gradients",
+    "vectorized relation formula equals explicit pairwise equation"
+  ]
+}

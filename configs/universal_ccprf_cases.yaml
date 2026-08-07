@@ -1,0 +1,52 @@
+# Universal CCPRF v10.5 examples.
+# These profiles use the same backbone and heads; only input adaptation changes.
+
+common:
+  widths: [64, 128, 256, 512]
+  fusion_stages: [P2, P3]
+  group_width: 8
+  stat_grid: 16
+  trust_radius:
+    P2: 0.03
+    P3: 0.05
+  local_windows:
+    P2: 8
+    P3: 4
+
+profiles:
+  single_direct:
+    input_mode: single
+    input_channels: 3
+    single_strategy: direct
+
+  single_self_complementary:
+    input_mode: decomposed
+    input_channels: 3
+    single_strategy: appearance_texture
+    lowpass_kernel: 5
+
+  automatic_optional_modalities:
+    input_mode: auto
+    input_channels: 3
+    single_strategy: direct
+    view_channels:
+      image: 3
+      depth: 1
+      thermal: 1
+
+  ordered_three_view:
+    input_mode: multi
+    view_channels: [3, 1, 2]
+
+heads:
+  classification:
+    task: classify
+    num_classes: 10
+  segmentation:
+    task: segment
+    num_classes: 1
+  detection:
+    task: detect
+    num_classes: 5
+  anomaly_features:
+    task: anomaly

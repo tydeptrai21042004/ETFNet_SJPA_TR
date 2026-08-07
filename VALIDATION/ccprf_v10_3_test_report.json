@@ -1,0 +1,8 @@
+{
+  "ccprf_specific_tests": {"passed": 13, "failed": 0},
+  "full_repository_tests": {"passed": 126, "failed": 0, "warnings": 3},
+  "training_path_smoke": "passed",
+  "checkpoint_deepcopy_and_save": "passed",
+  "zero_random_rank_deficient_extreme_inputs": "passed",
+  "common_tensor_change_after_innovation_step": 0.0
+}

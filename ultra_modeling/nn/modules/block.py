@@ -15,7 +15,7 @@ from .transformer import TransformerBlock
 from ultralytics.utils.torch_utils import fuse_conv_and_bn
 
 __all__ = ('DFL', 'HGBlock', 'HGStem', 'SPP', 'SPPF', 'C1', 'C2', 'C3', 'C2f', 'C3x', 'C3TR', 'C3Ghost', 'C2fCIB', 'SCDown', 'PSA', 'C3k2', 'CAFEM', 'C2PSA',
-           'GhostBottleneck', 'Bottleneck', 'BottleneckCSP', 'Proto', 'RepC3', 'ResNetLayer', 'IN', 'Multiin', 'MF', 'Add', 'Add2', 'A2C2f', 'TGF', 'GOCI', 'SJPA', 'RTPF', 'DCSPF', 'MPCRF')
+           'GhostBottleneck', 'Bottleneck', 'BottleneckCSP', 'Proto', 'RepC3', 'ResNetLayer', 'IN', 'Multiin', 'MF', 'Add', 'Add2', 'A2C2f', 'TGF', 'GOCI', 'SJPA', 'RTPF', 'DCSPF', 'MPCRF', 'CCPRF')
 
 
 class SE_Block(nn.Module):
@@ -2553,3 +2553,288 @@ class MPCRF(nn.Module):
 
     def forward(self, x):
         return self._forward_impl(x)[0]
+
+class CCPRF(nn.Module):
+    """Cross-Confirmed Predictive Residual Fusion (CCPRF v10.3).
+
+    The reference representation is direct RGB--IR concatenation. CCPRF adds a
+    zero-initialized, samplewise norm-bounded correction derived only from
+    cross-modal structure that is supported by the observed RGB--IR
+    cross-covariance.
+
+    For each sample and corresponding channel group, centered features are
+    scale-normalized and ridge-whitened. Let ``R_w`` and ``I_w`` be the
+    whitened coordinates and
+
+        C = R_w^T I_w / (N - 1).
+
+    The cross-supported predictions are
+
+        S_r = I_w C^T,        S_i = R_w C.
+
+    To correct disagreement only in reliable directions, CCPRF uses
+
+        A_r = C C^T,          A_i = C^T C,
+        D_r = (S_r - R_w) A_r,
+        D_i = (S_i - I_w) A_i,
+        H_r = S_r + D_r,      H_i = S_i + D_i.
+
+    If ``C = U diag(sigma) V^T``, then a matched canonical direction obeys
+
+        H_r,j = sigma_j (1 + sigma_j^2) I_w,j - sigma_j^2 R_w,j.
+
+    Hence an uncorrelated direction (``sigma_j = 0``) contributes exactly zero,
+    while reliable directions receive a cross-confirmed corrective basis. This
+    fixes v10.2, whose raw prediction error approached ``-R_w``/``-I_w`` when
+    correlation was weak.
+
+    A zero-initialized groupwise 1x1 map learns a task-directed correction.
+    Corresponding RGB and IR groups are explicitly interleaved before grouped
+    convolution and restored to modality-major order afterward. A samplewise
+    trust projection guarantees
+
+        ||CCPRF(R, I) - concat(R, I)||_F
+            <= trust_radius * ||concat(R, I)||_F.
+
+    Statistics are per-sample, detached from detector gradients, computed in
+    float32, and use Cholesky with ridge loading and a diagonal fallback. No
+    eigendecomposition or SVD is used in the forward path.
+    """
+
+    def __init__(self, channels: int, groups: int = 16, stat_grid: int = 16,
+                 eps: float = 1e-3, trust_radius: float = 0.05):
+        super().__init__()
+        if channels <= 0 or groups <= 0 or channels % groups != 0:
+            raise ValueError(
+                f'channels={channels} must be positive and divisible by groups={groups}'
+            )
+        if stat_grid < 2:
+            raise ValueError('stat_grid must be at least 2')
+        if eps <= 0:
+            raise ValueError('eps must be positive')
+        if not 0 < trust_radius <= 1:
+            raise ValueError('trust_radius must lie in (0, 1]')
+
+        self.channels = int(channels)
+        self.groups = int(groups)
+        self.group_width = self.channels // self.groups
+        self.stat_grid = int(stat_grid)
+        self.eps = float(eps)
+        self.trust_radius = float(trust_radius)
+
+        # Each group receives [RGB_basis_group, IR_basis_group] and emits
+        # [RGB_correction_group, IR_correction_group]. Creating the Parameter
+        # directly as zeros consumes no RNG and preserves downstream
+        # initialization parity with direct concatenation.
+        self.innovation_weight = nn.Parameter(torch.zeros(
+            2 * self.channels,
+            2 * self.group_width,
+            1,
+            1,
+        ))
+
+    @staticmethod
+    def _autocast_disabled(device: torch.device):
+        if device.type in {'cpu', 'cuda', 'xpu'}:
+            return torch.autocast(device_type=device.type, enabled=False)
+        return contextlib.nullcontext()
+
+    def _point_sample(self, x: torch.Tensor) -> torch.Tensor:
+        """Deterministically sample points without averaging away variance."""
+        h, w = x.shape[-2:]
+        gh, gw = min(self.stat_grid, h), min(self.stat_grid, w)
+        iy = ((torch.arange(gh, device=x.device) * h + h // 2) // gh).clamp_max(h - 1)
+        ix = ((torch.arange(gw, device=x.device) * w + w // 2) // gw).clamp_max(w - 1)
+        return x.index_select(-2, iy).index_select(-1, ix)
+
+    def _tokens(self, x: torch.Tensor) -> torch.Tensor:
+        b, _, h, w = x.shape
+        return x.reshape(
+            b, self.groups, self.group_width, h * w
+        ).permute(0, 1, 3, 2)
+
+    def _safe_cholesky(self, covariance: torch.Tensor, eye: torch.Tensor) -> torch.Tensor:
+        """Cholesky with per-sample retries and a finite diagonal fallback."""
+        covariance = 0.5 * (covariance + covariance.transpose(-1, -2))
+        chol, info = torch.linalg.cholesky_ex(covariance, check_errors=False)
+        for multiplier in (10.0, 100.0, 1000.0):
+            failed = info.ne(0)
+            if not bool(failed.any()):
+                break
+            trial, trial_info = torch.linalg.cholesky_ex(
+                covariance + (multiplier * self.eps) * eye,
+                check_errors=False,
+            )
+            selector = failed.unsqueeze(-1).unsqueeze(-1)
+            chol = torch.where(selector, trial, chol)
+            info = torch.where(failed, trial_info, info)
+
+        failed = info.ne(0)
+        if bool(failed.any()):
+            diagonal = covariance.diagonal(dim1=-2, dim2=-1).clamp_min(self.eps)
+            fallback = torch.diag_embed(diagonal.sqrt())
+            chol = torch.where(failed.unsqueeze(-1).unsqueeze(-1), fallback, chol)
+        return chol
+
+    def _statistics(self, rgb: torch.Tensor, ir: torch.Tensor):
+        """Return detached per-sample normalized covariance statistics."""
+        with self._autocast_disabled(rgb.device):
+            rs = self._tokens(self._point_sample(rgb.detach().float()))
+            is_ = self._tokens(self._point_sample(ir.detach().float()))
+            mu_r = rs.mean(-2, keepdim=True)
+            mu_i = is_.mean(-2, keepdim=True)
+            rc = rs - mu_r
+            ic = is_ - mu_i
+
+            # Scalar group RMS normalization makes the construction equivariant
+            # to modality-wise positive rescaling and prevents extreme feature
+            # magnitudes from destabilizing covariance factorization.
+            scale_r = rc.square().mean(dim=(-2, -1), keepdim=True).sqrt().clamp_min(self.eps)
+            scale_i = ic.square().mean(dim=(-2, -1), keepdim=True).sqrt().clamp_min(self.eps)
+            rc = rc / scale_r
+            ic = ic / scale_i
+
+            n = max(1, rs.shape[-2] - 1)
+            eye = torch.eye(
+                self.group_width, device=rgb.device, dtype=torch.float32
+            ).view(1, 1, self.group_width, self.group_width)
+            cov_r = rc.transpose(-1, -2) @ rc / n + self.eps * eye
+            cov_i = ic.transpose(-1, -2) @ ic / n + self.eps * eye
+            chol_r = self._safe_cholesky(cov_r, eye)
+            chol_i = self._safe_cholesky(cov_i, eye)
+
+            rw = torch.linalg.solve_triangular(
+                chol_r, rc.transpose(-1, -2), upper=False
+            ).transpose(-1, -2)
+            iw = torch.linalg.solve_triangular(
+                chol_i, ic.transpose(-1, -2), upper=False
+            ).transpose(-1, -2)
+            cross = rw.transpose(-1, -2) @ iw / n
+            coherence = (
+                cross.square().sum(dim=(-1, -2)) / self.group_width
+            ).clamp(0.0, 1.0)
+        return mu_r, mu_i, scale_r, scale_i, chol_r, chol_i, cross, coherence
+
+    @staticmethod
+    def _sample_norm(x: torch.Tensor) -> torch.Tensor:
+        return x.float().flatten(1).norm(dim=1).view(-1, 1, 1, 1)
+
+    def _group_major_pair(self, rgb_group: torch.Tensor,
+                          ir_group: torch.Tensor) -> torch.Tensor:
+        """Interleave corresponding modality groups for grouped convolution."""
+        b, _, h, w = rgb_group.shape
+        rgb_group = rgb_group.reshape(b, self.groups, self.group_width, h, w)
+        ir_group = ir_group.reshape(b, self.groups, self.group_width, h, w)
+        return torch.cat((rgb_group, ir_group), dim=2).reshape(
+            b, 2 * self.channels, h, w
+        )
+
+    def _modality_major_pair(self, grouped: torch.Tensor) -> torch.Tensor:
+        """Convert [group, RGB/IR, channel] output back to [RGB, IR]."""
+        b, _, h, w = grouped.shape
+        grouped = grouped.reshape(
+            b, self.groups, 2, self.group_width, h, w
+        )
+        rgb = grouped[:, :, 0].reshape(b, self.channels, h, w)
+        ir = grouped[:, :, 1].reshape(b, self.channels, h, w)
+        return torch.cat((rgb, ir), dim=1)
+
+    @staticmethod
+    def _hybrid_whitened_basis(rw: torch.Tensor, iw: torch.Tensor,
+                               cross: torch.Tensor):
+        """Return cross support plus reliability-weighted disagreement."""
+        support_r = iw @ cross.transpose(-1, -2)
+        support_i = rw @ cross
+        reliability_r = cross @ cross.transpose(-1, -2)
+        reliability_i = cross.transpose(-1, -2) @ cross
+        discrepancy_r = (support_r - rw) @ reliability_r
+        discrepancy_i = (support_i - iw) @ reliability_i
+        basis_r = support_r + discrepancy_r
+        basis_i = support_i + discrepancy_i
+        return basis_r, basis_i, reliability_r, reliability_i
+
+    def _cross_confirmed_basis(self, rgb: torch.Tensor, ir: torch.Tensor):
+        b, _, h, w = rgb.shape
+        with self._autocast_disabled(rgb.device):
+            (mu_r, mu_i, scale_r, scale_i, chol_r, chol_i,
+             cross, coherence) = self._statistics(rgb, ir)
+            rt = self._tokens(rgb.float())
+            it = self._tokens(ir.float())
+            rc = (rt - mu_r) / scale_r
+            ic = (it - mu_i) / scale_i
+            rw = torch.linalg.solve_triangular(
+                chol_r, rc.transpose(-1, -2), upper=False
+            ).transpose(-1, -2)
+            iw = torch.linalg.solve_triangular(
+                chol_i, ic.transpose(-1, -2), upper=False
+            ).transpose(-1, -2)
+
+            basis_r, basis_i, reliability_r, reliability_i = (
+                self._hybrid_whitened_basis(rw, iw, cross)
+            )
+
+            basis_r = (basis_r @ chol_r.transpose(-1, -2)) * scale_r
+            basis_i = (basis_i @ chol_i.transpose(-1, -2)) * scale_i
+            basis_r = basis_r.permute(0, 1, 3, 2).reshape(
+                b, self.channels, h, w
+            )
+            basis_i = basis_i.permute(0, 1, 3, 2).reshape(
+                b, self.channels, h, w
+            )
+        return (
+            basis_r.to(rgb.dtype),
+            basis_i.to(ir.dtype),
+            cross,
+            coherence,
+            reliability_r,
+            reliability_i,
+        )
+
+    def _forward_impl(self, x):
+        rgb, ir = x
+        if rgb.shape != ir.shape:
+            raise ValueError(
+                f'CCPRF expects matching RGB/IR shapes, got {rgb.shape} and {ir.shape}'
+            )
+        raw = torch.cat((rgb, ir), dim=1)
+        (basis_r, basis_i, cross, coherence,
+         reliability_r, reliability_i) = self._cross_confirmed_basis(rgb, ir)
+
+        grouped_basis = self._group_major_pair(basis_r, basis_i)
+        grouped_correction = F.conv2d(
+            grouped_basis,
+            self.innovation_weight,
+            groups=self.groups,
+        )
+        correction = self._modality_major_pair(grouped_correction)
+
+        raw_norm = self._sample_norm(raw)
+        correction_norm = self._sample_norm(correction)
+        radius = self.trust_radius * raw_norm
+        scale = torch.minimum(
+            torch.ones_like(correction_norm),
+            radius / (correction_norm + self.eps),
+        ).to(correction.dtype)
+        output = raw + scale * correction
+        diagnostics = {
+            'raw': raw,
+            'rgb_basis': basis_r,
+            'ir_basis': basis_i,
+            'grouped_basis': grouped_basis,
+            'cross_prediction': cross,
+            'coherence': coherence,
+            'rgb_reliability': reliability_r,
+            'ir_reliability': reliability_i,
+            'correction': correction,
+            'correction_norm': correction_norm,
+            'trust_radius_norm': radius,
+            'trust_scale': scale,
+        }
+        return output, diagnostics
+
+    def forward_with_diagnostics(self, x):
+        return self._forward_impl(x)
+
+    def forward(self, x):
+        return self._forward_impl(x)[0]
+

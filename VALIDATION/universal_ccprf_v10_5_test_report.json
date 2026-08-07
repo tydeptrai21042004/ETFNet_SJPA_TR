@@ -1,0 +1,67 @@
+{
+  "version": "8.0.238+etfnetsjpa.10.5",
+  "targeted_universal_tests": {
+    "passed": 26,
+    "file": "tests/test_universal_ccprf.py"
+  },
+  "combined_generic_tests": {
+    "passed": 38,
+    "files": [
+      "tests/test_generic_ccprf.py",
+      "tests/test_universal_ccprf.py"
+    ]
+  },
+  "full_repository_tests": {
+    "passed": 164,
+    "warnings": 3,
+    "duration_seconds": 20.14
+  },
+  "runnable_example": {
+    "classification": [
+      2,
+      4
+    ],
+    "segmentation": [
+      2,
+      1,
+      64,
+      80
+    ],
+    "detection_levels": [
+      "P2",
+      "P3",
+      "P4",
+      "P5"
+    ],
+    "anomaly_features": [
+      2,
+      32,
+      16,
+      20
+    ]
+  },
+  "validated_input_cases": [
+    "direct single tensor",
+    "single appearance-texture decomposition",
+    "ordered two/three/four-view sequences",
+    "named two/three-view mappings",
+    "named optional one/two-view subsets",
+    "auto runtime switch between single and multi-view inputs"
+  ],
+  "validated_tasks": [
+    "classification",
+    "segmentation",
+    "dense axis-aligned detection",
+    "anomaly feature extraction"
+  ],
+  "environment": {
+    "python": "3.13.5",
+    "torch": "2.10.0+cpu",
+    "cuda_available": false
+  },
+  "limitations": [
+    "No real user dataset was supplied for an accuracy benchmark.",
+    "Physical views must be spatially aligned before cross-view fusion.",
+    "Dense detection assignment, loss, and decoding remain external pipeline responsibilities."
+  ]
+}

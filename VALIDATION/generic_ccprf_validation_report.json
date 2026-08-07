@@ -1,0 +1,167 @@
+{
+  "appearance_texture": {
+    "max_reconstruction_error": 2.384185791015625e-07,
+    "kernel_sum": 1.0,
+    "kernel_min": 0.03999999910593033
+  },
+  "generic_fusion": {
+    "initial_max_difference": 0.0,
+    "max_trust_ratio": 0.9999908804893494,
+    "finite": true
+  },
+  "local_global": {
+    "output_shape": [
+      2,
+      32,
+      17,
+      19
+    ],
+    "max_trust_ratio": 0.7617093324661255,
+    "finite": true
+  },
+  "pyramid": {
+    "P2": [
+      2,
+      16,
+      16,
+      20
+    ],
+    "P3": [
+      2,
+      32,
+      8,
+      10
+    ],
+    "P4": [
+      2,
+      64,
+      4,
+      5
+    ],
+    "P5": [
+      2,
+      96,
+      2,
+      3
+    ]
+  },
+  "tasks": {
+    "classify": {
+      "parameters": 718702,
+      "output": [
+        2,
+        3
+      ]
+    },
+    "segment": {
+      "parameters": 724254,
+      "output": [
+        2,
+        3,
+        64,
+        80
+      ]
+    },
+    "detect": {
+      "parameters": 749035,
+      "output": {
+        "P2": {
+          "class_logits": [
+            2,
+            3,
+            16,
+            20
+          ],
+          "box_distances": [
+            2,
+            4,
+            16,
+            20
+          ],
+          "quality_logits": [
+            2,
+            1,
+            16,
+            20
+          ]
+        },
+        "P3": {
+          "class_logits": [
+            2,
+            3,
+            8,
+            10
+          ],
+          "box_distances": [
+            2,
+            4,
+            8,
+            10
+          ],
+          "quality_logits": [
+            2,
+            1,
+            8,
+            10
+          ]
+        },
+        "P4": {
+          "class_logits": [
+            2,
+            3,
+            4,
+            5
+          ],
+          "box_distances": [
+            2,
+            4,
+            4,
+            5
+          ],
+          "quality_logits": [
+            2,
+            1,
+            4,
+            5
+          ]
+        },
+        "P5": {
+          "class_logits": [
+            2,
+            3,
+            2,
+            3
+          ],
+          "box_distances": [
+            2,
+            4,
+            2,
+            3
+          ],
+          "quality_logits": [
+            2,
+            1,
+            2,
+            3
+          ]
+        }
+      }
+    },
+    "anomaly": {
+      "parameters": 720075,
+      "output": [
+        2,
+        32,
+        16,
+        20
+      ]
+    }
+  },
+  "synthetic_fabric_learnability": {
+    "initial_bce": 0.5773091912269592,
+    "final_bce": 0.49201086163520813,
+    "relative_reduction": 0.1477515530464117,
+    "steps": 12,
+    "note": "Software learnability smoke test; not a real-dataset benchmark."
+  }
+}

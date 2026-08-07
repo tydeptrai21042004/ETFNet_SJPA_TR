@@ -1,0 +1,24 @@
+# Task-agnostic CCPRF configuration for surface/fabric inspection.
+# Dataset paths, class names, and annotation formats belong in the training
+# pipeline, not in this model definition.
+input:
+  mode: appearance_texture   # appearance_texture | paired
+  input_channels: 3
+  lowpass_kernel: 5
+
+backbone:
+  widths: [64, 128, 256, 512]
+  fusion_stages: [P2, P3]
+  group_width: 8
+  stat_grid: 16
+  trust_radius:
+    P2: 0.03
+    P3: 0.05
+  local_windows:
+    P2: 8
+    P3: 4
+
+head:
+  task: segment              # classify | segment | detect | anomaly
+  num_classes: 1
+  hidden_channels: 64

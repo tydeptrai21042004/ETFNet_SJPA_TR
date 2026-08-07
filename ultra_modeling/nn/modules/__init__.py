@@ -21,6 +21,14 @@ from .block import *
 from .conv import (CBAM, ChannelAttention, Concat, Conv, Conv2, ConvTranspose, DWConv, DWConvTranspose2d, Focus,
                    GhostConv, LightConv, RepConv, SpatialAttention)
 from .head import OBB, Classify, Detect, Pose, RTDETRDecoder, Segment
+from .cerc import CERCBackbone, CERCModel, ConvolutionalCERC, UnifiedEvidenceAdapter
+from .generic_ccprf import (AnomalyFeatureHead, AppearanceTextureAdapter, ClassificationHead,
+                            DenseDetectionHead, GenericCCPRF, LocalGlobalCCPRF,
+                            MultiInputAdapter, MultiViewCCPRFBackbone, PairedViewAdapter,
+                            SegmentationHead, SingleViewAdapter, TaskAgnosticCCPRFModel,
+                            UniversalAppearanceTextureAdapter, UniversalCCPRFBackbone,
+                            UniversalCCPRFModel, UniversalCCPRFSetFusion,
+                            UniversalInputAdapter, ViewSetAggregator)
 from .transformer import (AIFI, MLP, DeformableTransformerDecoder, DeformableTransformerDecoderLayer, LayerNorm2d,
                           MLPBlock, MSDeformAttn, TransformerBlock, TransformerEncoderLayer, TransformerLayer)
 
@@ -30,4 +38,9 @@ __all__ = ('Conv', 'Conv2', 'LightConv', 'RepConv', 'DWConv', 'DWConvTranspose2d
            'C2f', 'C3x', 'C3TR', 'C3Ghost', 'GhostBottleneck', 'Bottleneck', 'BottleneckCSP', 'Proto', 'Detect',
            'Segment', 'Pose', 'Classify', 'TransformerEncoderLayer', 'RepC3', 'RTDETRDecoder', 'AIFI',
            'DeformableTransformerDecoder', 'DeformableTransformerDecoderLayer', 'MSDeformAttn', 'MLP', 'ResNetLayer',
-           'OBB', 'IN', 'Multiin', 'MF', 'Add', 'Add2', 'GOCI', 'SJPA', 'RTPF', 'DCSPF', 'MPCRF', 'C2fCIB', 'SCDown', 'PSA', 'C3k2', 'C2PSA', 'A2C2f', 'TGF')
+           'OBB', 'GenericCCPRF', 'LocalGlobalCCPRF', 'AppearanceTextureAdapter', 'PairedViewAdapter',
+           'SingleViewAdapter', 'MultiInputAdapter', 'UniversalAppearanceTextureAdapter',
+           'UniversalInputAdapter', 'UniversalCCPRFSetFusion',
+           'ViewSetAggregator', 'MultiViewCCPRFBackbone', 'UniversalCCPRFBackbone',
+           'ClassificationHead', 'SegmentationHead', 'DenseDetectionHead', 'AnomalyFeatureHead',
+           'TaskAgnosticCCPRFModel', 'UniversalCCPRFModel', 'UnifiedEvidenceAdapter', 'ConvolutionalCERC', 'CERCBackbone', 'CERCModel', 'IN', 'Multiin', 'MF', 'Add', 'Add2', 'GOCI', 'SJPA', 'RTPF', 'DCSPF', 'MPCRF', 'CCPRF', 'C2fCIB', 'SCDown', 'PSA', 'C3k2', 'C2PSA', 'A2C2f', 'TGF')

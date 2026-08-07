@@ -1,0 +1,76 @@
+# CERC v10.6 cross-domain dataset profiles.
+# These profiles do NOT change CERC mathematics; they only document expected
+# input channels/task heads and public dataset layout/source information.
+# The current CERC implementation is 2-D. MedMNIST3D is intentionally excluded.
+
+datasets:
+  aitex_fabric:
+    domain: industrial_fabric
+    task: [segment, anomaly]
+    input_channels: 3
+    supervision: image_and_binary_mask
+    notes: "245 images, 7 fabric types; public mirrors include defect masks."
+    source: "https://www.kaggle.com/datasets/nexuswho/aitex-fabric-image-database"
+    paper: "AFID: a public fabric image database for defect detection, AUTEX Research Journal, 2019"
+
+  tilda_textile:
+    domain: industrial_fabric
+    task: [classify, detect, anomaly]
+    input_channels: 1
+    supervision: class_or_derived_localization
+    notes: "Original TILDA has 3200 grayscale TIFF images, 8 textile kinds and defect/reference classes."
+    source: "https://lmb.informatik.uni-freiburg.de/research/completed_projects/dfg-texture/tilda/index.en.html"
+
+  mvtec_ad_texture:
+    domain: industrial_surface
+    task: [anomaly, segment]
+    input_channels: 3
+    supervision: normal_train_anomaly_test_with_masks
+    notes: "Use texture categories such as carpet, grid and leather for cross-domain surface anomaly testing."
+    source: "https://www.mvtec.com/research-teaching/datasets/mvtec-ad"
+
+  medmnist2d:
+    domain: medical
+    task: [classify]
+    input_channels: "1_or_3_by_subset"
+    image_size: 28
+    supervision: classification
+    notes: "12 standardized 2-D biomedical classification datasets. Use official medmnist package."
+    source: "https://medmnist.com/v2"
+    install: "pip install medmnist"
+
+  isic2018_task1:
+    domain: medical_dermoscopy
+    task: [segment]
+    input_channels: 3
+    supervision: image_and_binary_mask
+    notes: "Dermoscopy JPEG images with lesion boundary masks."
+    source: "https://challenge.isic-archive.com/landing/2018/45/"
+
+  kvasir_seg:
+    domain: medical_endoscopy
+    task: [segment]
+    input_channels: 3
+    supervision: image_and_binary_mask
+    notes: "Polyp segmentation dataset; official archive is about 44 MB."
+    source: "https://datasets.simula.no/kvasir-seg/"
+
+  busi_whu:
+    domain: medical_ultrasound
+    task: [segment]
+    input_channels: 1
+    supervision: image_and_tumor_region
+    notes: "927 breast ultrasound images in the latest Mendeley release; decode as grayscale for this profile."
+    source: "https://data.mendeley.com/datasets/k6cpmwybk3"
+    doi: "10.17632/k6cpmwybk3.3"
+
+  multimodal_medical_2d:
+    domain: medical_multisequence
+    task: [classify, segment, detect, anomaly]
+    input_channels:
+      t1: 1
+      t2: 1
+      flair: 1
+      adc: 1
+    supervision: task_dependent
+    notes: "Generic profile for aligned 2-D sequences/slices. Missing configured evidence fields are allowed."

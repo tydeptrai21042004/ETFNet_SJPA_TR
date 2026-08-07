@@ -1,0 +1,47 @@
+{
+  "version": "8.0.238+etfnetsjpa.10.4",
+  "targeted_tests": {
+    "file": "tests/test_generic_ccprf.py",
+    "passed": 12,
+    "duration_seconds": 7.39
+  },
+  "full_repository_tests": {
+    "passed": 138,
+    "warnings": 3,
+    "duration_seconds": 19.15
+  },
+  "smoke_example": {
+    "classification_output": [
+      2,
+      2
+    ],
+    "segmentation_output": [
+      2,
+      1,
+      256,
+      256
+    ],
+    "detection_levels": [
+      "P2",
+      "P3",
+      "P4",
+      "P5"
+    ],
+    "anomaly_output": [
+      2,
+      64,
+      64,
+      64
+    ]
+  },
+  "environment": {
+    "python": "3.13.5",
+    "torch": "2.10.0+cpu",
+    "cuda_available": false
+  },
+  "limitations": [
+    "No real fabric dataset was provided or trained in this local validation.",
+    "Synthetic fabric optimization is a software learnability test, not an accuracy benchmark.",
+    "Dense detection head returns raw per-level predictions; assignment and decoding belong to the training pipeline."
+  ]
+}

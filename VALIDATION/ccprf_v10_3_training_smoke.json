@@ -1,0 +1,9 @@
+{
+  "trainable_name": "model.9.innovation_weight",
+  "trainable_parameters": 4096,
+  "gradient_l1": 2.3233701540448237e-06,
+  "max_common_tensor_change": 0,
+  "innovation_l1_after_step": 2.1121015548706055,
+  "checkpoint_deepcopy_save": "passed",
+  "zero_random_eval": "passed"
+}

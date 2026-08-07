@@ -1,0 +1,47 @@
+{
+  "mathematics": {
+    "single_evidence_weight_min": 1.0,
+    "single_evidence_weight_max": 1.0,
+    "paired_support_mean": 0.21883772313594818,
+    "max_trust_ratio": 0.9999991059303284,
+    "innovation_parameters_per_stage_d4_k3": 144,
+    "finite": true
+  },
+  "fabric_rgb_segmentation_fixture": {
+    "initial_loss": 0.5636056065559387,
+    "final_loss": 0.34676095843315125,
+    "relative_reduction": 0.38474537087711763
+  },
+  "medical_28x28_grayscale_classification_fixture": {
+    "initial_loss": 0.7087599635124207,
+    "final_loss": 0.013222088105976582,
+    "relative_reduction": 0.9813447587523828
+  },
+  "medical_ultrasound_segmentation_fixture": {
+    "initial_loss": 0.5243330597877502,
+    "final_loss": 0.30382582545280457,
+    "relative_reduction": 0.42054802804958913
+  },
+  "medical_four_evidence_segmentation_fixture": {
+    "initial_loss": 0.6896793842315674,
+    "final_loss": 0.5075706839561462,
+    "relative_reduction": 0.2640483454182475
+  },
+  "runtime_generalization": {
+    "full_four_evidence_output_shape": [
+      1,
+      2,
+      40,
+      40
+    ],
+    "missing_modality_two_evidence_output_shape": [
+      1,
+      2,
+      40,
+      40
+    ],
+    "checkpoint_reload_max_difference": 0.0,
+    "finite_full": true,
+    "finite_subset": true
+  }
+}

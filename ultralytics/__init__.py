@@ -2,7 +2,7 @@
 
 from pathlib import Path
 
-__version__ = '8.0.238+etfnetsjpa.10.1'
+__version__ = "8.0.238+etfnetsjpa.10.6"
 
 # The source repository keeps implementation groups in sibling component roots so no
 # committed subfolder contains more than 100 files.  Extending package __path__ keeps
