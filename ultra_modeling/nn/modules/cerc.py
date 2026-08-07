@@ -150,6 +150,17 @@ class UnifiedEvidenceAdapter(nn.Module):
         return tuple(projected)
 
 
+class _ZeroConv2d(nn.Module):
+    """RNG-neutral zero-initialized convolution used by CERC."""
+    def __init__(self, in_channels: int, out_channels: int, kernel_size: int, groups: int = 1) -> None:
+        super().__init__()
+        self.groups = int(groups)
+        self.padding = kernel_size // 2
+        self.weight = nn.Parameter(torch.zeros(out_channels, in_channels // groups, kernel_size, kernel_size))
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        return F.conv2d(x, self.weight, padding=self.padding, groups=self.groups)
+
+
 class ConvolutionalCERC(nn.Module):
     r"""Canonical Evidence Relational Consensus with shared spatial convolution.
 
@@ -216,18 +227,53 @@ class ConvolutionalCERC(nn.Module):
         # One convolution shared by every latent atom and every evidence field.
         # Zero initialization gives exact identity atom updates at initialization
         # while preserving nonzero first-step gradients for these weights.
-        self.transport = nn.Conv2d(
-            self.group_width,
-            self.group_width,
-            kernel_size,
-            padding=kernel_size // 2,
-            bias=False,
-        )
-        nn.init.zeros_(self.transport.weight)
+        self.transport = _ZeroConv2d(self.group_width, self.group_width, kernel_size)
+
+        # Canonical-conditioned local evidence gate. One kernel is shared over
+        # every evidence field and every latent channel group, so its parameter
+        # count is independent of M and G. Zero initialization preserves the
+        # original relation-centrality consensus exactly at initialization.
+        self.local_gate = _ZeroConv2d(self.group_width, 1, kernel_size)
+        # Shared nonlinear whole-evidence quality scorer. Its first layer uses
+        # a deterministic cosine basis (no RNG consumption); the output layer
+        # starts at zero so initial consensus remains purely canonical.
+        descriptor_dim = 3 * self.channels
+        hidden = max(8, self.channels // 4)
+        row = torch.arange(hidden, dtype=torch.float32)[:, None] + 1.0
+        col = torch.arange(descriptor_dim, dtype=torch.float32)[None, :] + 0.5
+        basis = torch.cos(math.pi * row * col / float(descriptor_dim))
+        basis = basis / math.sqrt(float(descriptor_dim))
+        self.global_gate_w1 = nn.Parameter(basis)
+        self.global_gate_b1 = nn.Parameter(torch.zeros(hidden))
+        self.global_gate_w2 = nn.Parameter(torch.zeros(hidden))
+        # Zero canonical gain makes the initial evidence softmax exactly uniform
+        # for any M>1. Together with zero transport/gates, CERC is therefore
+        # exactly the mean-fusion baseline at initialization (identity for M=1).
+        self.canonical_gain = nn.Parameter(torch.zeros(()))
+        # Evidence-hull coordinate shared across evidence count. alpha_g=0 is
+        # exact arithmetic mean; alpha_g=1 is exact element-wise max. The same
+        # equation is identity for M=1 because mean==max. Clamp keeps the base
+        # consensus inside their convex hull while retaining endpoint gradients.
+        self.envelope_gain = nn.Parameter(torch.zeros(self.groups))
 
     @property
     def innovation_parameters(self) -> int:
         return int(self.transport.weight.numel())
+
+    @property
+    def gating_parameters(self) -> int:
+        return int(
+            self.local_gate.weight.numel()
+            + self.global_gate_w1.numel()
+            + self.global_gate_b1.numel()
+            + self.global_gate_w2.numel()
+            + self.canonical_gain.numel()
+            + self.envelope_gain.numel()
+        )
+
+    @property
+    def total_relation_parameters(self) -> int:
+        return self.innovation_parameters + self.gating_parameters
 
     @staticmethod
     def _sample_norm(x: torch.Tensor) -> torch.Tensor:
@@ -383,9 +429,55 @@ class ConvolutionalCERC(nn.Module):
         # weight one when M=1 and re-normalizes over any available evidence set.
         centrality = support.sum(dim=2) / float(max(1, k - 1))
         centrality = centrality.reshape(b, m, self.groups)
-        weights = torch.softmax(centrality / self.temperature, dim=1).to(updated.dtype)
-        consensus_groups = (
-            updated_views * weights[..., None, None, None]
+        # Spatially local, shared evidence selection conditioned on canonical
+        # centrality. For M=1 softmax is exactly one; for arbitrary M the same
+        # equation re-normalizes over whatever evidence is available.
+        gate_input = updated_views.reshape(
+            b * m * self.groups, self.group_width, h, w
+        )
+        local_logits = self.local_gate(gate_input).reshape(
+            b, m, self.groups, h, w
+        )
+        full_views = updated_views.reshape(b, m, self.channels, h, w).float()
+        descriptor_mean = full_views.mean(dim=(-1, -2))
+        descriptor_rms = torch.sqrt(
+            full_views.square().mean(dim=(-1, -2)) + self.eps * self.eps
+        )
+        descriptor_peak = full_views.abs().amax(dim=(-1, -2))
+        global_descriptor = torch.cat(
+            (descriptor_mean, descriptor_rms, descriptor_peak), dim=-1
+        )
+        hidden_quality = F.silu(
+            torch.einsum(
+                "bmd,hd->bmh", global_descriptor, self.global_gate_w1.float()
+            ) + self.global_gate_b1.float()
+        )
+        global_logits = torch.einsum(
+            "bmh,h->bm", hidden_quality, self.global_gate_w2.float()
+        )
+        logits = (
+            self.canonical_gain.float() * centrality[..., None, None]
+            + global_logits[:, :, None, None, None]
+            + local_logits.float()
+        )
+        weights = torch.softmax(logits / self.temperature, dim=1).to(updated.dtype)
+        # Numerically safe residual form around the exact arithmetic mean.
+        # When all logits are zero, softmax equals the same rounded 1/M value
+        # used below, so the residual is bitwise zero and CERC exactly matches
+        # MeanEvidenceFusion rather than differing by summation order.
+        uniform = torch.full_like(weights, 1.0 / float(m))
+        mean_groups = updated_views.mean(dim=1)
+        max_groups = updated_views.amax(dim=1)
+        alpha = self.envelope_gain.clamp(0.0, 1.0).to(updated.dtype).view(
+            1, self.groups, 1, 1, 1
+        )
+        # Convex evidence hull plus zero-sum relational reweighting. At alpha=0
+        # and zero logits this is bitwise mean; at alpha=1 it is bitwise max.
+        # Residual form is bitwise identity for M=1 because max_groups-mean_groups
+        # is exactly zero; alpha=0 is bitwise mean and alpha=1 is mathematically max.
+        base_consensus = mean_groups + alpha * (max_groups - mean_groups)
+        consensus_groups = base_consensus + (
+            updated_views * (weights - uniform)[..., None, :, :]
         ).sum(dim=1)
         consensus = consensus_groups.reshape(b, self.channels, h, w)
 
@@ -397,6 +489,11 @@ class ConvolutionalCERC(nn.Module):
             "support": support,
             "centrality": centrality,
             "consensus_weights": weights,
+            "local_gate_logits": local_logits,
+            "global_gate_logits": global_logits,
+            "canonical_gain": self.canonical_gain.detach(),
+            "envelope_gain": self.envelope_gain.detach().clamp(0.0, 1.0),
+            "gating_parameter_count": self.gating_parameters,
             "correction_norm": correction_norm,
             "trust_radius_norm": radius,
             "trust_scale": scale,

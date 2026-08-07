@@ -1,0 +1,77 @@
+{
+  "protocol": {
+    "mean_training_steps": 16,
+    "mean_lr": 0.011,
+    "cerc_relation_only_max_steps": 8,
+    "cerc_relation_lr": 0.012,
+    "selection": "best validation among step 0,2,4,6,8; step 0 is exact trained mean baseline",
+    "final_report": "fresh held-out test fixture not used for checkpoint selection"
+  },
+  "mean_val_average": 0.5759839895483917,
+  "cerc_val_average": 0.6235265035883993,
+  "val_average_gain": 0.047542514040007575,
+  "validation_nondegradation_seeds": 5,
+  "validation_strict_improvement_seeds": 5,
+  "mean_test_average": 0.59881131694501,
+  "cerc_test_average": 0.6412399881860931,
+  "test_average_gain": 0.042428671241083085,
+  "test_nondegradation_seeds": 4,
+  "test_strict_improvement_seeds": 4,
+  "raw": {
+    "0": {
+      "mean_val_score": 0.6571850910829489,
+      "cerc_best_val_score": 0.7113600307671974,
+      "val_gain": 0.05417493968424858,
+      "mean_test_score": 0.6545768842079869,
+      "cerc_test_score": 0.6992001338363149,
+      "test_gain": 0.04462324962832798,
+      "best_relation_steps": 6,
+      "prediction_parity_maxdiff": 0.0,
+      "common_state_maxdiff": 0.0
+    },
+    "1": {
+      "mean_val_score": 0.5778859637025491,
+      "cerc_best_val_score": 0.6257288709321258,
+      "val_gain": 0.04784290722957674,
+      "mean_test_score": 0.5993136078899357,
+      "cerc_test_score": 0.6473687511935582,
+      "test_gain": 0.04805514330362248,
+      "best_relation_steps": 8,
+      "prediction_parity_maxdiff": 0.0,
+      "common_state_maxdiff": 0.0
+    },
+    "2": {
+      "mean_val_score": 0.5655338313501059,
+      "cerc_best_val_score": 0.566661819787655,
+      "val_gain": 0.0011279884375490212,
+      "mean_test_score": 0.6031147397328156,
+      "cerc_test_score": 0.596249095056334,
+      "test_gain": -0.0068656446764815415,
+      "best_relation_steps": 2,
+      "prediction_parity_maxdiff": 0.0,
+      "common_state_maxdiff": 0.0
+    },
+    "3": {
+      "mean_val_score": 0.6471031181649061,
+      "cerc_best_val_score": 0.6908395020425135,
+      "val_gain": 0.043736383877607476,
+      "mean_test_score": 0.6769737458839618,
+      "cerc_test_score": 0.6957309328757116,
+      "test_gain": 0.018757186991749886,
+      "best_relation_steps": 8,
+      "prediction_parity_maxdiff": 0.0,
+      "common_state_maxdiff": 0.0
+    },
+    "4": {
+      "mean_val_score": 0.43221194344144875,
+      "cerc_best_val_score": 0.5230422944125048,
+      "val_gain": 0.09083035097105607,
+      "mean_test_score": 0.4600776070103498,
+      "cerc_test_score": 0.5676510279685464,
+      "test_gain": 0.10757342095819661,
+      "best_relation_steps": 8,
+      "prediction_parity_maxdiff": 0.0,
+      "common_state_maxdiff": 0.0
+    }
+  }
+}

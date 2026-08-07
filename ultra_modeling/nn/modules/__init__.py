@@ -44,3 +44,15 @@ __all__ = ('Conv', 'Conv2', 'LightConv', 'RepConv', 'DWConv', 'DWConvTranspose2d
            'ViewSetAggregator', 'MultiViewCCPRFBackbone', 'UniversalCCPRFBackbone',
            'ClassificationHead', 'SegmentationHead', 'DenseDetectionHead', 'AnomalyFeatureHead',
            'TaskAgnosticCCPRFModel', 'UniversalCCPRFModel', 'UnifiedEvidenceAdapter', 'ConvolutionalCERC', 'CERCBackbone', 'CERCModel', 'IN', 'Multiin', 'MF', 'Add', 'Add2', 'GOCI', 'SJPA', 'RTPF', 'DCSPF', 'MPCRF', 'CCPRF', 'C2fCIB', 'SCDown', 'PSA', 'C3k2', 'C2PSA', 'A2C2f', 'TGF')
+
+from .evidence_baselines import (
+    DeepSetEvidenceFusion,
+    EnergySoftmaxFusion,
+    EvidenceFusionBackbone,
+    EvidenceFusionModel,
+    LearnedGateFusion,
+    MaxEvidenceFusion,
+    MeanEvidenceFusion,
+)
+
+from .evidence_baselines import MedianEvidenceFusion, SmoothMaxEvidenceFusion, SetAttentionEvidenceFusion
